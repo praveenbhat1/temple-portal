@@ -37,57 +37,43 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-0 overflow-x-hidden">
       {/* ── HERO SECTION ── */}
-      <section className="relative min-h-screen flex items-center pt-28 lg:pt-24 pb-16 overflow-hidden bg-cream">
-        <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[300px] md:w-[800px] h-[300px] md:h-[800px] bg-gold-200/10 blur-[80px] md:blur-[150px] rounded-full pointer-events-none" />
+      <section className="relative min-h-[600px] md:min-h-screen flex items-center pt-32 pb-16 bg-cream overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(212,163,115,0.1),transparent_50%)]" />
         
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center w-full">
-          <div className="order-1 lg:order-2 lg:col-span-5 relative flex justify-center animate-fade-in lg:justify-end">
-            <div className="relative w-full max-w-[320px] md:max-w-[460px] aspect-[4/5]">
-              <div className="absolute inset-0 bg-gold-400/20 blur-[60px] md:blur-[100px] rounded-full -z-10 animate-pulse" />
-              <div className="relative w-full h-full rounded-t-full rounded-b-[3rem] md:rounded-b-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)] md:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border-[10px] md:border-[16px] border-[#2d241e]">
-                <img 
-                  src="/original-hero.jpg" 
-                  alt="Lord Vinayaka" 
-                  className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-1000"
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/30 pointer-events-none" />
-              </div>
-              <div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center p-2 border border-gray-100 animate-bounce" style={{ animationDuration: '3s' }}>
+        <div className="max-w-7xl mx-auto px-6 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full relative z-10">
+          <div className="order-1 lg:order-2 lg:col-span-5 flex justify-center">
+            <div className="relative w-full max-w-[400px] aspect-[4/5] rounded-t-full rounded-b-[3rem] overflow-hidden shadow-2xl border-[12px] border-foreground bg-foreground">
+              <img 
+                src="/original-hero.jpg" 
+                alt="Lord Vinayaka" 
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center p-2">
                 <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-8 h-8 object-contain" />
               </div>
             </div>
           </div>
-
-          <div className="order-2 lg:order-1 lg:col-span-7 z-10 animate-fade-in text-center lg:text-left">
-            <div className="flex items-center justify-center lg:justify-start gap-3 text-saffron-600 mb-6 md:mb-8">
-              <div className="h-px w-8 bg-saffron-600/30 hidden md:block" />
-              <span className="text-[10px] md:text-[11px] uppercase tracking-[0.4em] font-sans font-bold">Divine Sanctuary</span>
+          
+          <div className="order-2 lg:order-1 lg:col-span-7 text-center lg:text-left">
+            <div className="flex items-center justify-center lg:justify-start gap-3 text-saffron-600 mb-6">
+              <div className="h-px w-8 bg-saffron-600/30" />
+              <span className="text-[10px] uppercase tracking-[0.4em] font-bold">Divine Sanctuary</span>
               <div className="h-px w-8 bg-saffron-600/30 md:hidden" />
             </div>
-            <h1 className="text-5xl md:text-7xl lg:text-[90px] font-serif text-foreground leading-[1.1] md:leading-[0.9] mb-8 md:mb-12">
-              <span className="block font-medium opacity-90">Sunkadakatte</span>
-              <span className="text-vermillion italic font-serif mt-2 md:mt-4 block drop-shadow-sm">Sri Vinayaka</span>
+            <h1 className="text-5xl md:text-7xl lg:text-[80px] font-serif text-foreground leading-[1.1] mb-8">
+              <span className="block opacity-90">Sunkadakatte</span>
+              <span className="text-vermillion italic block mt-2">Sri Vinayaka</span>
             </h1>
-            <p className="text-sm md:text-base text-gray-500 font-sans max-w-lg mx-auto lg:mx-0 mb-10 md:mb-12 leading-relaxed">
+            <p className="text-base text-gray-600 max-w-lg mx-auto lg:mx-0 mb-12 leading-relaxed">
               Step into a realm of spiritual grace and timeless tradition. Seek the blessings of Lord Ganesha in the heart of Sunkadakatte.
             </p>
-            <div className="flex flex-col sm:flex-row flex-wrap gap-4 md:gap-6 items-center justify-center lg:justify-start">
-              <Link 
-                href="/sevas" 
-                className="w-full sm:w-auto bg-white text-gray-900 border border-gray-200 hover:border-saffron-600 px-8 md:px-10 py-4 md:py-5 rounded-full font-bold transition-all shadow-xl shadow-gray-200/50 flex items-center justify-center gap-3 group"
-              >
-                Book Seva
-                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+            <div className="flex flex-col sm:flex-row gap-5 items-center justify-center lg:justify-start">
+              <Link href="/sevas" className="w-full sm:w-auto bg-saffron-700 text-white px-10 py-5 rounded-full font-bold shadow-xl shadow-saffron-700/20 flex items-center justify-center gap-3">
+                Book Seva <ArrowRight size={18} />
               </Link>
-              <Link 
-                href="/about" 
-                className="text-gray-900 px-6 py-4 rounded-full font-bold hover:text-saffron-700 transition-all"
-              >
+              <Link href="/about" className="text-foreground font-bold hover:text-saffron-700 transition-colors px-6">
                 Explore Temple
               </Link>
-            </div>
-            <div className="mt-12 md:mt-16">
-              <NotificationButton />
             </div>
           </div>
         </div>
