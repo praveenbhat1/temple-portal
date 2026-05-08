@@ -45,13 +45,10 @@ export default function AboutPage() {
           </div>
           <div className="order-1 lg:order-2 flex justify-center lg:justify-end">
             <div className="relative w-full max-w-[500px] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border-4 md:border-8 border-white group">
-              <Image
-                src="/legacy.jpg"
+              <img
+                src="/about-legacy.jpg"
                 alt="Temple History"
-                width={600}
-                height={800}
                 className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
-                priority
               />
             </div>
           </div>
@@ -64,13 +61,10 @@ export default function AboutPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-16 items-center">
           <div className="relative flex justify-center lg:justify-start">
             <div className="relative w-full max-w-[500px] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border-4 md:border-8 border-white group">
-              <Image
-                src="/significance.jpg"
+              <img
+                src="/about-significance.jpg"
                 alt="Temple Significance"
-                width={600}
-                height={800}
                 className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
-                priority
               />
             </div>
           </div>
@@ -101,7 +95,7 @@ export default function AboutPage() {
           <div className="text-center mb-12 md:mb-16">
             <div className="flex justify-center mb-6">
               <div className="w-16 h-16 bg-saffron-50 rounded-full flex items-center justify-center p-3 border border-saffron-100 shadow-sm">
-                <Image src="/ganapathi-logo.jpg" alt="Ganesh Logo" width={40} height={40} className="object-contain" />
+                <img src="/ganapathi-logo.jpg" alt="Ganesh Logo" className="w-10 h-10 object-contain" />
               </div>
             </div>
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-serif text-foreground mb-4">
