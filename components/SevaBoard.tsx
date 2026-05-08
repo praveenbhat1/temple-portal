@@ -43,7 +43,7 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
       <div className="bg-gradient-to-r from-vermillion to-saffron-700 p-6 md:p-8 text-center text-ivory border-b-4 border-gold-600">
         <div className="flex items-center justify-center gap-4 mb-2">
           <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-1 relative overflow-hidden shadow-sm">
-             <Image src="/ganapathi-logo.jpg" alt="Logo" fill className="object-contain p-1" />
+             <img src="/ganapathi-logo.jpg" alt="Logo" className="w-full h-full object-contain p-1" />
           </div>
           <div className="text-left">
             <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide">Sunkadakatte Shri Vinayaka Temple</h1>

@@ -42,7 +42,7 @@ export default function AnnouncementCard({ announcement, isLatest }: Props) {
             {formatDate(announcement.date)}
           </span>
         </div>
-        <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={18} height={18} className="opacity-0 group-hover:opacity-20 transition-opacity" />
+        <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-4.5 h-4.5 opacity-0 group-hover:opacity-20 transition-opacity object-contain" />
       </div>
 
       <h3 className={`font-serif text-gray-900 mb-3 md:mb-4 leading-tight group-hover:text-saffron-700 transition-colors ${
