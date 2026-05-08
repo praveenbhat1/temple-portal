@@ -89,7 +89,8 @@ export default function Navbar() {
 
 
   return (
-    <nav
+    <>
+      <nav
       className={`fixed top-0 right-0 left-0 z-[100] transition-all duration-500 ${
         scrolled 
           ? "bg-ivory/95 backdrop-blur-md shadow-sm py-3" 
@@ -154,68 +155,70 @@ export default function Navbar() {
         </button>
       </div>
 
-      {/* Mobile Menu */}
-      <div
-        className={`md:hidden fixed inset-0 z-40 bg-ivory transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${
-          isOpen ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-full pointer-events-none"
-        }`}
-      >
-        <div className="absolute inset-0 bg-[url('/paper-texture.png')] opacity-[0.05] pointer-events-none" />
-        
-        {/* Mobile Header with Back Arrow */}
-        <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-20">
-          <button 
+    </nav>
+
+    {/* Mobile Menu Overlay - Moved outside nav for better z-index isolation */}
+    <div
+      className={`md:hidden fixed inset-0 z-[200] bg-ivory transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${
+        isOpen ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-full pointer-events-none"
+      }`}
+    >
+      <div className="absolute inset-0 bg-[url('/paper-texture.png')] opacity-[0.05] pointer-events-none" />
+      
+      {/* Mobile Header with Back Arrow */}
+      <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-20">
+        <button 
+          onClick={() => setIsOpen(false)}
+          className="flex items-center gap-2 text-saffron-700 font-sans text-sm font-bold uppercase tracking-widest hover:text-saffron-800 transition-colors"
+        >
+          <ArrowLeft size={20} />
+          Back
+        </button>
+      </div>
+
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 relative z-10 pt-20 overflow-y-auto">
+        {isAdmin && (
+          <Link
+            href="/admin"
             onClick={() => setIsOpen(false)}
-            className="flex items-center gap-2 text-saffron-700 font-sans text-sm font-bold uppercase tracking-widest hover:text-saffron-800 transition-colors"
+            className="flex items-center gap-2 px-8 py-3 rounded-full bg-saffron-600 text-ivory text-sm font-bold uppercase tracking-[0.2em] mb-8 shadow-lg shadow-saffron-900/20"
           >
-            <ArrowLeft size={20} />
-            Back
-          </button>
+            <LayoutDashboard size={18} />
+            Dashboard
+          </Link>
+        )}
+
+        <div className="flex flex-col items-center gap-2 w-full">
+          {NAV_LINKS.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.name}
+                href={link.href}
+                onClick={() => setIsOpen(false)}
+                className={`w-full text-center py-3 text-xl font-serif tracking-wide transition-all duration-300 ${
+                  isActive 
+                    ? "text-saffron-700 font-bold" 
+                    : "text-gray-900 opacity-90 hover:opacity-100"
+                }`}
+              >
+                {link.name}
+                {isActive && (
+                  <div className="w-6 h-0.5 bg-gold-600 mx-auto mt-1 rounded-full" />
+                )}
+              </Link>
+            );
+          })}
         </div>
 
-        <div className="flex flex-col items-center justify-center h-full gap-4 px-8 relative z-10 pt-20 overflow-y-auto">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center gap-2 px-8 py-3 rounded-full bg-saffron-600 text-ivory text-sm font-bold uppercase tracking-[0.2em] mb-8 shadow-lg shadow-saffron-900/20"
-            >
-              <LayoutDashboard size={18} />
-              Dashboard
-            </Link>
-          )}
-
-          <div className="flex flex-col items-center gap-2 w-full">
-            {NAV_LINKS.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`w-full text-center py-3 text-xl font-serif tracking-wide transition-all duration-300 ${
-                    isActive 
-                      ? "text-saffron-700 font-bold" 
-                      : "text-gray-900 opacity-90 hover:opacity-100"
-                  }`}
-                >
-                  {link.name}
-                  {isActive && (
-                    <div className="w-6 h-0.5 bg-gold-600 mx-auto mt-1 rounded-full" />
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="mt-10 pt-8 border-t border-saffron-100/50 w-full text-center">
-            <p className="text-[9px] uppercase tracking-[0.3em] font-bold text-saffron-600/30">
-              Sunkadakatte Sri Vinayaka Temple
-            </p>
-          </div>
+        <div className="mt-10 pt-8 border-t border-saffron-100/50 w-full text-center">
+          <p className="text-[9px] uppercase tracking-[0.3em] font-bold text-saffron-600/30">
+            Sunkadakatte Sri Vinayaka Temple
+          </p>
         </div>
       </div>
-    </nav>
-  );
+    </div>
+  </>
+);
 }
 
