@@ -275,7 +275,7 @@ function BookingModal({ selectedSevas, onClose, onSuccess }: { selectedSevas: Se
     id?: string;
   }) => void }) {
   return (
-    <div className="fixed inset-0 z-[100] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
       <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-4xl p-6 md:p-10 lg:p-12 my-auto relative">
         <button 
           onClick={onClose} 
@@ -305,7 +305,7 @@ function SuccessView({ booking, onClose }: { booking: Booking, onClose: () => vo
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-xl p-8 md:p-12 text-center relative">
         <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8 text-green-600">
           <CheckCircle2 size={40} />
