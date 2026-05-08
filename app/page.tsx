@@ -46,7 +46,7 @@ export default function Home() {
               <div className="absolute inset-0 bg-gold-400/20 blur-[60px] md:blur-[100px] rounded-full -z-10 animate-pulse" />
               <div className="relative w-full h-full rounded-t-full rounded-b-[3rem] md:rounded-b-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)] md:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border-[10px] md:border-[16px] border-[#2d241e]">
                 <Image 
-                  src="/original-hero.jpg?v=2" 
+                  src="/original-hero.jpg" 
                   alt="Lord Vinayaka" 
                   fill 
                   sizes="(max-width: 768px) 100vw, 50vw"
