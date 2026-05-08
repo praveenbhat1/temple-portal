@@ -101,13 +101,10 @@ export default function Navbar() {
         {/* Logo with B&W Ganapathi Image */}
         <Link href="/" className="flex items-center gap-3 group">
           <div className="relative w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-md border border-gray-100 group-hover:scale-110 transition-transform duration-300">
-            <Image 
+            <img 
               src="/ganapathi-logo.jpg" 
               alt="Ganapathi Logo" 
-              width={40}
-              height={40}
-              className="object-contain p-1"
-              priority
+              className="w-full h-full object-contain p-1"
             />
           </div>
           <div className="flex flex-col">
