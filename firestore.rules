@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Admin check: User must be signed in AND their email must match the admin email
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email != null &&
+             (request.auth.token.email == "praveenbhat@gmail.com" ||
+              exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
+              get(/databases/$(database)/documents/admins/primary).data.email == request.auth.token.email);
+    }
+
+    match /sevas/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /announcements/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /bookings/{document=**} {
+      // Allow public to create bookings and search for their own via mandatory filters
+      allow create: if true; 
+      allow read: if (request.query.limit <= 20 && 
+                     (request.query.filters.phone != null || request.query.filters.bookingId != null)) || 
+                     isAdmin();
+      
+      // Only admins can update or delete
+      allow update, delete: if isAdmin();
+    }
+    
+    match /admins/{document=**} {
+      allow read: if true;
+      allow write: if false; // Only manageable from console or setup script
+    }
+    
+    match /gallery/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

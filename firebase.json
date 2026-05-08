@@ -1,0 +1,19 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-south1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Sri Vinayaka Temple",
+        "supportEmail": "sowkurpraveenbhat@gmail.com"
+      }
+    }
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
