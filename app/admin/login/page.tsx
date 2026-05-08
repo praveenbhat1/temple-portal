@@ -150,11 +150,9 @@ export default function AdminLoginPage() {
                 }}
                 className="w-full bg-white border border-gray-100 text-gray-700 hover:bg-gray-50 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-sm"
               >
-                <Image 
+                <img 
                   src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
                   alt="Google" 
-                  width={20} 
-                  height={20} 
                   className="w-5 h-5"
                 />
                 Sign in with Google
