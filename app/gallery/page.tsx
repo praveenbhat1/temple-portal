@@ -67,7 +67,7 @@ export default function GalleryPage() {
           </div>
         ) : images.length === 0 ? (
           <div className="text-center py-24 text-gray-400 bg-white rounded-[2rem] md:rounded-[3rem] border border-saffron-100">
-            <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={48} height={48} className="mx-auto mb-4 opacity-20" />
+            <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto mb-4 opacity-20 w-12 h-12" />
             <p className="font-serif text-lg md:text-xl">The gallery is being curated...</p>
           </div>
         ) : (
@@ -78,12 +78,9 @@ export default function GalleryPage() {
                 className="group relative overflow-hidden rounded-[1.5rem] md:rounded-[2rem] border-2 md:border-4 border-white shadow-lg bg-white break-inside-avoid"
               >
                 <div className="relative aspect-auto">
-                  <Image
+                  <img
                     src={img.imageUrl}
                     alt="Temple Gallery Image"
-                    width={800}
-                    height={1000}
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
                     loading="lazy"
                   />
@@ -102,7 +99,7 @@ export default function GalleryPage() {
                   {/* Soft Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-6">
                     <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                      <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={14} height={14} className="invert brightness-0" /> 
+                      <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-4 h-4 invert brightness-0" /> 
                       Divine Moment
                     </span>
                   </div>
@@ -115,7 +112,7 @@ export default function GalleryPage() {
 
       {/* Decorative Footer Element */}
       <div className="mt-20 md:mt-24 text-center opacity-[0.03]">
-        <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={80} height={80} className="mx-auto" />
+        <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto w-20 h-20" />
       </div>
     </div>
   );

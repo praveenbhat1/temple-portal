@@ -49,7 +49,7 @@ export default function AnnouncementsPage() {
           </div>
         ) : announcements.length === 0 ? (
           <div className="text-center py-20 bg-white border border-saffron-100 rounded-[2.5rem] md:rounded-[3rem]">
-            <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={48} height={48} className="mx-auto mb-4 opacity-20" />
+            <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto mb-4 opacity-20 w-12 h-12" />
             <p className="font-serif text-lg md:text-xl text-gray-400">All is peaceful. No new notices.</p>
           </div>
         ) : (
@@ -67,7 +67,7 @@ export default function AnnouncementsPage() {
 
       {/* Subtle bottom accent */}
       <div className="mt-20 md:mt-24 text-center opacity-5">
-        <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={60} height={60} className="mx-auto" />
+        <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto w-16 h-16" />
       </div>
     </div>
   );

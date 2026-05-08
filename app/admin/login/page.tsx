@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
             {/* Header */}
             <div className="text-center mb-10">
               <div className="w-20 h-20 bg-saffron-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
-                <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={48} height={48} className="opacity-80" />
+                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-10 h-10 opacity-80 object-contain" />
               </div>
               <h1 className="text-3xl font-serif text-gray-900 mb-2">Admin Portal</h1>
               <p className="text-xs uppercase tracking-[0.2em] font-bold text-gray-400">Secure Divine Gateway</p>

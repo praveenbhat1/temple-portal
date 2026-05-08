@@ -176,11 +176,10 @@ export default function AboutPage() {
               ].map((trustee, i) => (
                 <div key={i} className="flex flex-col sm:flex-row items-center sm:items-start gap-6 bg-white/5 p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
                   <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-saffron-100/10 flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-saffron-600/30 group-hover:border-saffron-600 transition-colors relative">
-                    <Image
+                    <img
                       src={trustee.image}
                       alt={trustee.name}
-                      fill
-                      className="object-cover"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                   <div className="text-center sm:text-left">
@@ -199,11 +198,10 @@ export default function AboutPage() {
           <div className="absolute top-0 left-0 w-full h-full bg-[url('/paper-texture.png')] opacity-10" />
           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8 md:gap-16">
             <div className="w-32 h-32 md:w-48 md:h-48 rounded-full bg-saffron-100/10 flex-shrink-0 flex items-center justify-center overflow-hidden border-4 border-gold-600/30 shadow-[0_0_50px_rgba(249,115,22,0.3)] relative group">
-              <Image 
+              <img 
                 src="/priest/manjunath-bhat.jpg" 
                 alt="Vedamurthy Manjunath Bhat"
-                fill
-                className="object-cover transform group-hover:scale-110 transition-transform duration-700"
+                className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
             </div>

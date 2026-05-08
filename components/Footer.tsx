@@ -19,7 +19,7 @@ export default function Footer() {
         <div className="lg:col-span-1">
           <Link href="/" className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1 overflow-hidden">
-              <Image src="/ganapathi-logo-bw.png" alt="Ganesh" width={32} height={32} />
+              <img src="/ganapathi-logo-bw.png" alt="Ganesh" className="w-8 h-8 object-contain" />
             </div>
             <span className="font-serif text-xl font-bold tracking-tight">Sri Vinayaka</span>
           </Link>
@@ -86,7 +86,7 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 mt-16 md:mt-20 pt-8 border-t border-ivory/10 flex flex-col md:flex-row items-center justify-between gap-6 text-[10px] uppercase tracking-widest text-ivory/40 text-center md:text-left">
         <p>© 2026 Sunkadakatte Sri Vinayaka Temple. All Rights Reserved.</p>
         <p className="flex items-center gap-2">
-          Handcrafted with Devotion <Image src="/ganapathi-logo-bw.png" alt="Ganesh" width={12} height={12} className="opacity-40" />
+          Handcrafted with Devotion <img src="/ganapathi-logo-bw.png" alt="Ganesh" className="w-3 h-3 opacity-40" />
         </p>
       </div>
     </footer>
