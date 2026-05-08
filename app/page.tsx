@@ -85,7 +85,7 @@ export default function Home() {
           {[
             { icon: <MapPin size={24} />, title: "Mudutonce, Karnataka", sub: "Sacred Abode" },
             { icon: <Clock size={24} />, title: "6:30 AM – 8:30 PM", sub: "Darshan Timings" },
-            { icon: <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={24} height={24} />, title: "Daily Aarti", sub: "Sacred Offerings" }
+            { icon: <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6 object-contain" />, title: "Daily Aarti", sub: "Sacred Offerings" }
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-5 group justify-center md:justify-start">
               <div className="w-14 h-14 bg-saffron-50 rounded-2xl flex items-center justify-center text-vermillion group-hover:scale-110 transition-transform shadow-sm">
@@ -148,7 +148,7 @@ export default function Home() {
                 </Link>
               </div>
               <div className="w-full lg:w-1/3 aspect-square relative rounded-[2.5rem] md:rounded-[3rem] overflow-hidden bg-saffron-50/50 flex items-center justify-center border border-saffron-100">
-                <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={120} height={120} className="opacity-20" />
+                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-24 h-24 object-contain opacity-20" />
               </div>
             </div>
           </div>
