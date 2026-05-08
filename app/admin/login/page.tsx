@@ -38,9 +38,22 @@ export default function AdminLoginPage() {
 
       router.replace("/admin");
     } catch (err: unknown) {
-      const errorObj = err as Error;
+      const errorObj = err as any;
       console.error("Login Error:", errorObj);
-      setError("Failed to sign in. Please check your credentials.");
+      
+      let message = "Failed to sign in. Please check your credentials.";
+      
+      if (errorObj.code === "auth/user-not-found") {
+        message = "User not found. Please create this email in Firebase Console > Authentication.";
+      } else if (errorObj.code === "auth/wrong-password") {
+        message = "Incorrect password. Please try again.";
+      } else if (errorObj.code === "auth/unauthorized-domain") {
+        message = "Domain not authorized. Please add this Vercel URL to Firebase Console > Settings > Authorized Domains.";
+      } else if (errorObj.code === "auth/invalid-credential") {
+        message = "Invalid credentials. If this is a new account, ensure you've set a password in Firebase Console.";
+      }
+      
+      setError(`${message} (Error: ${errorObj.code || 'unknown'})`);
       setLoading(false);
     }
   };
