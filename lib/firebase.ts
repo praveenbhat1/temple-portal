@@ -17,26 +17,30 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Defensive check for environment variables
-if (typeof window !== "undefined") {
-  console.log("Firebase Initialization: Checking Environment Variables...");
-  Object.entries(firebaseConfig).forEach(([key, value]) => {
-    if (!value) console.warn(`Firebase Config Error: ${key} is undefined!`);
-  });
+// Check if we have minimum required config
+const isConfigValid = !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
+
+// Initialize Firebase only once and only if config is valid
+let app;
+if (isConfigValid) {
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+} else {
+  // Mock app for build-time safety (will fail at runtime if still missing)
+  app = { name: "[DEFAULT]-MOCK" } as any;
+  if (typeof window !== "undefined") {
+    console.error("Firebase Config is missing! Please check your environment variables.");
+  }
 }
 
-// Initialize Firebase only once
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+export const auth = isConfigValid ? getAuth(app) : ({} as any);
+export const db = isConfigValid ? getFirestore(app) : ({} as any);
+export const storage = isConfigValid ? getStorage(app) : ({} as any);
 
 /**
  * getMessagingInstance – only call in browser context where FCM is supported.
  */
 export const getMessagingInstance = async () => {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isConfigValid) return null;
   const supported = await isSupported();
   if (!supported) return null;
   return getMessaging(app);
