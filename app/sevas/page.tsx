@@ -363,11 +363,14 @@ function SevasContent() {
     );
   };
 
-  // Merge static sevas with dynamic sevas for calculation
-  const allAvailable = [
+  // Merge static sevas with dynamic sevas for calculation, ensuring uniqueness by ID
+  const rawAll = [
     ...ALL_SEVAS.map(s => ({ id: s.id, name: s.nameEn, price: s.price })),
     ...extraSevas.map(s => ({ id: s.id!, name: s.name, price: s.price }))
   ];
+  
+  // Use a Map to keep only one item per ID (last one wins, which is usually the dynamic one)
+  const allAvailable = Array.from(new Map(rawAll.map(s => [s.id, s])).values());
 
   const selectedSevas = allAvailable.filter(s => selectedIds.includes(s.id));
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);

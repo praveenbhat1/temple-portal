@@ -47,7 +47,7 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
           </div>
           <div className="text-left">
             <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide">Sunkadakatte Shri Vinayaka Temple</h1>
-            <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-80">Mudutonce, Karnataka</p>
+            <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-80">Kallianpur, Karnataka</p>
           </div>
         </div>
       </div>

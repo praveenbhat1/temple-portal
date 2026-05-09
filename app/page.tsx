@@ -97,9 +97,9 @@ export default function Home() {
       <section className="py-12 md:py-16 bg-ivory border-y border-saffron-100/50">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
           {[
-            { icon: <MapPin size={24} />, title: "Mudutonce, Karnataka", sub: "Sacred Abode" },
-            { icon: <Clock size={24} />, title: "6:30 AM – 8:30 PM", sub: "Darshan Timings" },
-            { icon: <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={24} height={24} />, title: "Daily Aarti", sub: "Sacred Offerings" }
+            { icon: <MapPin size={24} />, title: "Kallianpur, Karnataka", sub: "Sacred Abode" },
+            { icon: <Clock size={24} />, title: "6:30 AM – 12:30 PM & 5:30 PM – 8:30 PM", sub: "Darshan Timings" },
+            { icon: <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6" />, title: "Daily Aarti", sub: "Sacred Offerings" }
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-5 group justify-center md:justify-start">
               <div className="w-14 h-14 bg-saffron-50 rounded-2xl flex items-center justify-center text-vermillion group-hover:scale-110 transition-transform shadow-sm">
@@ -162,7 +162,7 @@ export default function Home() {
                 </Link>
               </div>
               <div className="w-full lg:w-1/3 aspect-square relative rounded-[2.5rem] md:rounded-[3rem] overflow-hidden bg-saffron-50/50 flex items-center justify-center border border-saffron-100">
-                <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={120} height={120} className="opacity-20" />
+                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-[120px] h-[120px] opacity-20 object-contain" />
               </div>
             </div>
           </div>

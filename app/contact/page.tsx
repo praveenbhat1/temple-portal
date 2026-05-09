@@ -23,7 +23,7 @@ export default function ContactPage() {
           <div className="bg-white border border-saffron-100 rounded-[2.5rem] p-8 md:p-12 shadow-sm">
             <h2 className="text-2xl md:text-3xl font-serif text-gray-900 mb-8 flex items-center gap-3">
               <div className="w-10 h-10 bg-saffron-50 rounded-xl flex items-center justify-center text-saffron-600">
-                <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={24} height={24} />
+                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6 object-contain" />
               </div>
               Temple Details
             </h2>
@@ -37,7 +37,7 @@ export default function ContactPage() {
                   <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">Address</h4>
                   <p className="text-sm md:text-base text-gray-700 leading-relaxed font-sans">
                     Sunkadakatte Sri Vinayaka Temple, <br />
-                    Mudutonce, Karnataka - 574221
+                    Kallianpur, Karnataka - 574221
                   </p>
                 </div>
               </div>
