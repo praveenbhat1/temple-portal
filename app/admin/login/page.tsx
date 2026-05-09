@@ -53,7 +53,7 @@ export default function AdminLoginPage() {
         message = "Invalid credentials. If this is a new account, ensure you've set a password in Firebase Console.";
       }
       
-      setError(`${message} (Error: ${errorObj.code || 'unknown'})`);
+      setError(`${message} (Error: ${errorObj.code || 'unknown'}). Current URL: ${typeof window !== 'undefined' ? window.location.hostname : 'unknown'}`);
       setLoading(false);
     }
   };
