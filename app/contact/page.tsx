@@ -36,8 +36,8 @@ export default function ContactPage() {
                 <div>
                   <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">Address</h4>
                   <p className="text-sm md:text-base text-gray-700 leading-relaxed font-sans">
-                    Sunkadakatte Sri Vinayaka Temple, <br />
-                    Kallianpur, Karnataka - 574221
+                    Kallianpur Main Road, near Santhekatte, <br />
+                    Udupi, Karnataka - 576115
                   </p>
                 </div>
               </div>

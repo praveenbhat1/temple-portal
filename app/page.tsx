@@ -97,7 +97,7 @@ export default function Home() {
       <section className="py-12 md:py-16 bg-ivory border-y border-saffron-100/50">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
           {[
-            { icon: <MapPin size={24} />, title: "Kallianpur, Karnataka", sub: "Sacred Abode" },
+            { icon: <MapPin size={24} />, title: "Kallianpur Main Road, Udupi", sub: "Sacred Abode" },
             { icon: <Clock size={24} />, title: "6:30 AM – 12:30 PM & 5:30 PM – 8:30 PM", sub: "Darshan Timings" },
             { icon: <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6" />, title: "Daily Aarti", sub: "Sacred Offerings" }
           ].map((item, i) => (
