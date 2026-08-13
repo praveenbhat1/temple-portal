@@ -3,31 +3,48 @@ import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   getSevas,
-  addBooking,
+  createUpiBooking,
   Seva,
   Booking,
+  UpiBookingIntent,
 } from "@/lib/firestore";
-import { Calendar, User, Phone, CheckCircle2, X, ShoppingBag, Download, CreditCard, Mail, Heart, ArrowRight } from "lucide-react";
+import { Calendar, User, Phone, CheckCircle2, X, ShoppingBag, Download, CreditCard, Mail, Heart, ArrowRight, Smartphone, Clock3, Copy, Check } from "lucide-react";
 import SevaBoard from "@/components/SevaBoard";
+import BankTransferDetails from "@/components/BankTransferDetails";
+import { UPI_APPS, toAppLink } from "@/lib/upiApps";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
 import { generatePremiumReceipt } from "@/lib/receipt";
 
+/** Shape of the payload Razorpay hands back on a failed payment. */
+type RazorpayFailure = { error?: { description?: string; reason?: string; code?: string } };
+
+/** Only the fields we actually pass to Razorpay Checkout. */
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  notes?: Record<string, string>;
+  handler: (response: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) => void | Promise<void>;
+  modal?: { ondismiss?: () => void };
+  prefill?: { name?: string; contact?: string; email?: string };
+  theme?: { color?: string };
+}
+
 declare global {
-  interface Window { 
-    Razorpay: new (options: {
-      key: string | undefined;
-      amount: number;
-      currency: string;
-      name: string;
-      description: string;
-      order_id: string;
-      handler: (response: { razorpay_payment_id: string }) => void;
-      modal: { ondismiss: () => void };
-      prefill: { name: string; contact: string; email: string };
-      theme: { color: string };
-    }) => { open: () => void; on: (event: string, handler: (response: { error: { description: string } }) => void) => void };
+  interface Window {
+    Razorpay: new (options: RazorpayOptions) => {
+      open: () => void;
+      on: (event: "payment.failed", handler: (response: RazorpayFailure) => void) => void;
+    };
   }
 }
 
@@ -35,10 +52,59 @@ function todayISO() {
   return new Date().toISOString().split("T")[0];
 }
 
+/**
+ * Which payment path the site is running.
+ *
+ * "upi"      — devotee pays by UPI intent/QR, a temple admin confirms it by
+ *              hand in /admin/bookings. No gateway, no fees, no card support.
+ * "razorpay" — the gateway flow below. Set NEXT_PUBLIC_PAYMENT_MODE=razorpay to
+ *              switch back to it; nothing about it was removed.
+ */
+const PAYMENT_MODE: "upi" | "razorpay" =
+  process.env.NEXT_PUBLIC_PAYMENT_MODE === "razorpay" ? "razorpay" : "upi";
+
+const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+/**
+ * Resolve once the Razorpay checkout script is genuinely ready.
+ *
+ * Previously the script was appended and then used immediately, so submitting
+ * before it finished loading threw "window.Razorpay is not a constructor" and
+ * the checkout never opened.
+ */
+function loadRazorpay(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== "undefined" && window.Razorpay) return resolve();
+
+    const existing = document.getElementById("razorpay-script") as HTMLScriptElement | null;
+    const script = existing ?? document.createElement("script");
+
+    const onLoad = () => (window.Razorpay ? resolve() : reject(new Error("script_no_global")));
+    const onError = () => reject(new Error("script_blocked"));
+
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+
+    if (!existing) {
+      script.id = "razorpay-script";
+      script.src = RAZORPAY_SRC;
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
+    // Don't hang forever if the network swallows it.
+    window.setTimeout(() => reject(new Error("script_timeout")), 15000);
+  });
+}
+
 // ─── Unified Booking Form ─────────────────────────────────────────────────────
 
 interface BookingFormProps {
   selectedSevas: Seva[];
+  /** Today's date (YYYY-MM-DD), captured when the modal was opened. */
+  defaultDate: string;
+  /** Manual UPI flow — the devotee says they have paid, awaiting confirmation. */
+  onAwaitingConfirmation: (intent: UpiBookingIntent, eventDate: string) => void;
   onSuccess: (booking: {
     bookingId: string;
     userName: string;
@@ -55,106 +121,222 @@ interface BookingFormProps {
   }) => void;
 }
 
-function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
+function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuccess }: BookingFormProps) {
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
-  const [form, setForm] = useState({ userName: "", phone: "", email: "", eventDate: "" });
+  // defaultDate is computed by the caller's click handler, so today's date never
+  // has to be read during render or patched in from an effect.
+  const [form, setForm] = useState({ userName: "", phone: "", email: "", eventDate: defaultDate });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  /** Set once the pending booking exists and the devotee needs to pay by UPI. */
+  const [upiIntent, setUpiIntent] = useState<UpiBookingIntent | null>(null);
 
   useEffect(() => {
-    // Set initial date only on client to avoid hydration mismatch
-    setForm(f => ({ ...f, eventDate: todayISO() }));
-    
-    if (!document.getElementById("razorpay-script")) {
-      const s = document.createElement("script");
-      s.id = "razorpay-script";
-      s.src = "https://checkout.razorpay.com/v1/checkout.js";
-      s.async = true;
-      document.body.appendChild(s);
-    }
+    if (PAYMENT_MODE !== "razorpay") return;
+    // Warm the checkout script up front; handlePay awaits it regardless.
+    loadRazorpay().catch(() => {
+      /* surfaced on submit instead of nagging on open */
+    });
   }, []);
 
-  const handlePay = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  /** Shared front-half of both flows: validate, then hand back clean values. */
+  const validate = (): { phone: string } | null => {
     if (!form.userName || !form.phone || !form.eventDate) {
       setError("Please fill all required fields.");
-      return;
+      return null;
     }
-
     if (!isValidIndianPhone(form.phone)) {
       setError("Please enter a valid 10-digit mobile number.");
-      return;
+      return null;
     }
+    return { phone: normalizePhone(form.phone) };
+  };
+
+  /**
+   * Manual UPI flow: record a pending booking, then show the devotee a QR and
+   * an intent link carrying the booking reference. No payment is proven here.
+   */
+  const handleUpi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const valid = validate();
+    if (!valid) return;
 
     setSubmitting(true);
     setError("");
 
-    const normalizedPhone = normalizePhone(form.phone);
-    const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const bookingId = `SV-${shortId}`;
+    try {
+      const intent = await createUpiBooking({
+        userName: form.userName,
+        phone: valid.phone,
+        email: form.email.trim() || undefined,
+        sevaIds: selectedSevas.map((s) => s.id!),
+        eventDate: form.eventDate,
+      });
+      setUpiIntent(intent);
+    } catch (err) {
+      setError((err as Error).message || "Could not start the booking. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePay = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const valid = validate();
+    if (!valid) return;
+
+    setSubmitting(true);
+    setError("");
+
+    const normalizedPhone = valid.phone;
+    const sevaLines = selectedSevas.map(s => ({ sevaId: s.id!, name: s.name, price: s.price }));
 
     try {
-      // 1. Create Server-Side Order
+      // 1. Make sure the checkout script is actually usable before we need it.
+      try {
+        await loadRazorpay();
+      } catch {
+        throw new Error(
+          "The payment window could not be loaded. Please check your internet connection " +
+            "or disable any ad blocker, then try again."
+        );
+      }
+
+      const publishableKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!publishableKey) {
+        throw new Error("Online payment is not configured for this temple yet.");
+      }
+
+      // 2. Create the order server-side.
       const orderRes = await fetch("/api/razorpay/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: totalAmount,
-          receipt: bookingId,
-        }),
+        body: JSON.stringify({ amount: totalAmount }),
       });
 
+      const order = await orderRes.json().catch(() => ({}));
+      // The server owns the booking reference.
+      const bookingId: string = order?.bookingId;
+
       if (!orderRes.ok) {
-        const errData = await orderRes.json();
-        throw new Error(errData.error || "Failed to create order");
+        // Log everything, show the devotee something actionable.
+        console.error("Order creation failed:", order);
+        if (order?.reason === "razorpay_auth_failed") {
+          throw new Error(
+            "Online payment is temporarily unavailable — the temple's payment credentials " +
+              "need to be renewed. Please try again later or contact the temple office."
+          );
+        }
+        throw new Error(order?.error || "Could not start the payment. Please try again.");
       }
 
-      const order = await orderRes.json();
-
+      // 3. Open checkout.
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID as string,
+        key: publishableKey,
         amount: order.amount,
         currency: order.currency,
         name: "Sri Vinayaka Temple",
-        description: `Sacred Offering: ${selectedSevas.length} Sevas`,
+        description:
+          selectedSevas.length === 1
+            ? `Seva: ${selectedSevas[0].name}`
+            : `Sacred Offering: ${selectedSevas.length} Sevas`,
         order_id: order.id,
-        handler: async (response: { razorpay_payment_id: string }) => {
-          const bookingData = {
-            bookingId,
-            userName: form.userName,
-            phone: normalizedPhone,
-            email: form.email || undefined,
-            sevas: selectedSevas.map(s => ({ sevaId: s.id!, name: s.name, price: s.price })),
-            totalAmount,
-            bookingDate: todayISO(),
-            eventDate: form.eventDate,
-            paymentStatus: "success" as const,
-            razorpayOrderId: order.id,
-            razorpayPaymentId: response.razorpay_payment_id,
-          };
+        notes: { bookingId, userName: form.userName, phone: normalizedPhone, eventDate: form.eventDate },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            // 4. The server verifies the signature and writes the booking.
+            const verifyRes = await fetch("/api/razorpay/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...response,
+                bookingId,
+                userName: form.userName,
+                phone: normalizedPhone,
+                email: form.email.trim() || "",
+                sevas: sevaLines,
+                eventDate: form.eventDate,
+              }),
+            });
 
-          const docRef = await addBooking(bookingData);
-          onSuccess({ ...bookingData, id: docRef.id });
-          setSubmitting(false);
+            const result = await verifyRes.json().catch(() => ({}));
+
+            if (!verifyRes.ok) {
+              console.error("Payment verification failed:", result);
+              setError(
+                result?.reason === "bad_signature"
+                  ? "This payment could not be verified. Please contact the temple office with your payment ID: " +
+                      response.razorpay_payment_id
+                  : "Your payment went through but we could not save the booking. Please keep this " +
+                      `payment ID and contact the temple office: ${response.razorpay_payment_id}`
+              );
+              setSubmitting(false);
+              return;
+            }
+
+            onSuccess({
+              bookingId: result.bookingId ?? bookingId,
+              userName: result.userName ?? form.userName,
+              phone: result.phone ?? normalizedPhone,
+              email: result.email ?? form.email.trim(),
+              sevas: result.sevas ?? sevaLines,
+              totalAmount: result.totalAmount ?? totalAmount,
+              bookingDate: result.bookingDate ?? todayISO(),
+              eventDate: result.eventDate ?? form.eventDate,
+              paymentStatus: "success",
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              id: result.id,
+            });
+          } catch (err) {
+            console.error("Verification request threw:", err);
+            setError(
+              "Your payment went through but confirmation failed. Please keep this payment ID " +
+                `and contact the temple office: ${response.razorpay_payment_id}`
+            );
+          } finally {
+            setSubmitting(false);
+          }
         },
         modal: { ondismiss: () => setSubmitting(false) },
-        prefill: { name: form.userName, contact: form.phone, email: form.email },
+        prefill: { name: form.userName, contact: normalizedPhone, email: form.email },
         theme: { color: "#c2410c" },
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", (response: { error: { description: string } }) => {
-        setError(`Payment failed: ${response.error.description}`);
+      rzp.on("payment.failed", (response: RazorpayFailure) => {
+        console.error("Razorpay payment failed:", response.error);
+        setError(
+          response.error?.description
+            ? `Payment failed: ${response.error.description}`
+            : "Payment could not be completed. Please try again."
+        );
         setSubmitting(false);
       });
       rzp.open();
     } catch (err) {
       const errorObj = err as Error;
-      setError(errorObj.message || "An error occurred during payment initiation.");
+      console.error("Payment initiation error:", errorObj);
+      setError(errorObj.message || "Payment could not be completed. Please try again.");
       setSubmitting(false);
     }
   };
+
+  // Once the pending booking exists, the form is replaced by the pay-by-UPI
+  // step — going back would only orphan the booking that was just created.
+  if (upiIntent) {
+    return (
+      <UpiPayStep
+        intent={upiIntent}
+        onPaid={() => onAwaitingConfirmation(upiIntent, form.eventDate)}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col lg:grid lg:grid-cols-2 gap-10">
@@ -179,7 +361,7 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
       </div>
 
       {/* Inputs */}
-      <form onSubmit={handlePay} className="space-y-6">
+      <form onSubmit={PAYMENT_MODE === "razorpay" ? handlePay : handleUpi} className="space-y-6">
         <div className="relative">
           <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Devotee Name</label>
           <div className="relative">
@@ -187,7 +369,10 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
             <input
               type="text" required
               value={form.userName}
-              onChange={(e) => setForm({ ...form, userName: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, userName: e.target.value });
+                setError("");
+              }}
               placeholder="Full name"
               className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
             />
@@ -204,7 +389,10 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
             <input
               type="tel" required
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, phone: e.target.value });
+                setError("");
+              }}
               placeholder="XXXXXXXXXX"
               maxLength={10}
               className="w-full bg-white border border-saffron-100 rounded-2xl pl-24 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
@@ -219,7 +407,10 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
             <input
               type="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, email: e.target.value });
+                setError("");
+              }}
               placeholder="devotee@example.com"
               className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
             />
@@ -233,7 +424,10 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
             <input
               type="date" required
               value={form.eventDate}
-              onChange={(e) => setForm({ ...form, eventDate: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, eventDate: e.target.value });
+                setError("");
+              }}
               min={todayISO()}
               className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
             />
@@ -246,10 +440,17 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
           type="submit" disabled={submitting}
           className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3 group"
         >
-          {submitting ? "Processing Payment…" : (
+          {submitting ? (
+            PAYMENT_MODE === "razorpay" ? "Processing Payment…" : "Preparing your UPI payment…"
+          ) : PAYMENT_MODE === "razorpay" ? (
             <>
               <CreditCard size={18} />
               Proceed to Payment
+            </>
+          ) : (
+            <>
+              <Smartphone size={18} />
+              Continue to UPI Payment
             </>
           )}
         </button>
@@ -258,9 +459,148 @@ function BookingForm({ selectedSevas, onSuccess }: BookingFormProps) {
   );
 }
 
+// ─── UPI payment step ─────────────────────────────────────────────────────────
+
+/**
+ * Show the devotee how to pay, then let them tell us they have.
+ *
+ * "I have completed the payment" is only a hint for the temple office — it
+ * writes nothing and proves nothing. The booking stays pending until an admin
+ * matches the credit in the temple's account against the reference shown here.
+ */
+function UpiPayStep({ intent, onPaid }: { intent: UpiBookingIntent; onPaid: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyReference = async () => {
+    try {
+      await navigator.clipboard.writeText(intent.bookingId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked — the reference is on screen to copy by hand */
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+    <div className="flex flex-col lg:grid lg:grid-cols-2 gap-10">
+      {/*
+        Two ways to pay, chosen by pointer type rather than screen width — a
+        phone gets the deep links, a mouse gets the QR.
+
+        This is the whole point of the split: on a phone the QR is useless,
+        because scanning it would need a second device. The pointer media query
+        is CSS, so the right half is correct on first paint with no hydration
+        flash and no user-agent sniffing.
+      */}
+      <div className="bg-saffron-50/50 rounded-3xl p-6 md:p-8 border border-saffron-100 text-center">
+        <p className="text-3xl font-serif font-bold text-saffron-700 mb-6">
+          ₹{intent.totalAmount.toLocaleString("en-IN")}
+        </p>
+
+        {/* ── Touch devices: open a UPI app on this phone ── */}
+        <div className="hidden [@media(pointer:coarse)]:block">
+          <a
+            href={intent.upiUri}
+            className="w-full bg-saffron-700 hover:bg-saffron-800 text-ivory font-bold py-5 rounded-2xl transition-all shadow-lg shadow-saffron-700/20 text-sm flex items-center justify-center gap-2"
+          >
+            <Smartphone size={18} />
+            Pay ₹{intent.totalAmount.toLocaleString("en-IN")} Now
+          </a>
+
+          <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mt-6 mb-3">
+            or open directly in
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {UPI_APPS.map((app) => (
+              <a
+                key={app.id}
+                href={toAppLink(intent.upiUri, app)}
+                className="bg-white border border-saffron-100 text-gray-700 text-[11px] font-bold py-3 rounded-xl hover:border-saffron-300 hover:text-saffron-700 transition-colors"
+              >
+                {app.name}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Mouse/desktop: nothing here can launch an app, so scan instead ── */}
+        <div className="[@media(pointer:coarse)]:hidden">
+          <span className="text-[10px] uppercase tracking-[0.25em] font-bold text-saffron-600 block mb-4">
+            Scan to Pay
+          </span>
+
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={intent.qrDataUrl}
+            alt={`UPI QR code for ${intent.bookingId}`}
+            width={220}
+            height={220}
+            className="mx-auto rounded-2xl border border-saffron-100 bg-white p-2 shadow-sm"
+          />
+
+          <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
+            Scan with GPay, PhonePe, Paytm or any UPI app on your phone.
+          </p>
+        </div>
+      </div>
+
+      {/* Reference + what happens next */}
+      <div className="space-y-6">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">
+            Your Booking Reference
+          </label>
+          <button
+            type="button"
+            onClick={copyReference}
+            className="w-full bg-white border border-saffron-100 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 hover:border-saffron-300 transition-colors shadow-sm group"
+          >
+            <span className="font-mono font-bold tracking-widest text-saffron-700 text-lg">
+              {intent.bookingId}
+            </span>
+            <span className="text-gray-400 group-hover:text-saffron-600 transition-colors">
+              {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
+            </span>
+          </button>
+          <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
+            This reference travels with your payment, so the temple can match it to your seva.
+            Please keep it safe.
+          </p>
+        </div>
+
+        <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-5 space-y-3">
+          <p className="text-xs font-bold text-amber-900 flex items-center gap-2">
+            <Clock3 size={14} />
+            Confirmation is not instant
+          </p>
+          <p className="text-[11px] text-amber-800/80 leading-relaxed">
+            The temple office checks payments by hand and will confirm your booking shortly.
+            You can follow its status any time using the reference above.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onPaid}
+          className="w-full bg-saffron-700 hover:bg-saffron-800 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3"
+        >
+          <CheckCircle2 size={18} />
+          I have completed the payment
+        </button>
+      </div>
+    </div>
+
+    {/* Fallback for devotees who don't use UPI. The same "I have completed the
+        payment" button above applies — either way an admin confirms it. */}
+    <BankTransferDetails bookingId={intent.bookingId} />
+    </div>
+  );
+}
+
 // ─── Modal wrapper ─────────────────────────────────────────────────────────────
 
-function BookingModal({ selectedSevas, onClose, onSuccess }: { selectedSevas: Seva[], onClose: () => void, onSuccess: (b: {
+function BookingModal({ selectedSevas, defaultDate, onClose, onAwaitingConfirmation, onSuccess }: { selectedSevas: Seva[], defaultDate: string, onClose: () => void, onAwaitingConfirmation: (intent: UpiBookingIntent, eventDate: string) => void, onSuccess: (b: {
     bookingId: string;
     userName: string;
     phone: string;
@@ -290,7 +630,12 @@ function BookingModal({ selectedSevas, onClose, onSuccess }: { selectedSevas: Se
           <div className="w-12 h-0.5 bg-gold-400 mx-auto mt-4" />
         </div>
 
-        <BookingForm selectedSevas={selectedSevas} onSuccess={onSuccess} />
+        <BookingForm
+          selectedSevas={selectedSevas}
+          defaultDate={defaultDate}
+          onAwaitingConfirmation={onAwaitingConfirmation}
+          onSuccess={onSuccess}
+        />
       </div>
     </div>
   );
@@ -335,6 +680,63 @@ function SuccessView({ booking, onClose }: { booking: Booking, onClose: () => vo
   );
 }
 
+// ─── Awaiting-confirmation Component ──────────────────────────────────────────
+
+/**
+ * The end of the manual UPI flow.
+ *
+ * Deliberately does NOT offer a receipt: no payment has been verified yet, and
+ * handing over a receipt for money the temple has not confirmed receiving would
+ * be a lie the devotee could reasonably act on.
+ */
+function AwaitingConfirmationView({
+  intent,
+  onClose,
+}: {
+  intent: UpiBookingIntent;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
+      <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-xl p-8 md:p-12 text-center relative my-auto">
+        <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-8 text-amber-600">
+          <Clock3 size={38} />
+        </div>
+
+        <h2 className="text-3xl font-serif text-gray-900 mb-4">Awaiting Confirmation</h2>
+        <p className="text-gray-500 font-sans leading-relaxed mb-8">
+          Thank you. Your seva booking has been recorded and the temple office will confirm it
+          once your payment is verified.
+        </p>
+
+        <div className="bg-saffron-50/60 border border-saffron-100 rounded-2xl px-6 py-5 mb-8">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">
+            Booking Reference
+          </p>
+          <p className="font-mono font-bold tracking-widest text-saffron-700 text-xl">
+            {intent.bookingId}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link
+            href="/track-booking"
+            className="flex-1 bg-saffron-600 hover:bg-saffron-700 text-white px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-saffron-100"
+          >
+            Track This Booking
+          </Link>
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-700 px-8 py-4 rounded-full font-bold hover:bg-gray-50 transition-all"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 function SevasContent() {
@@ -343,8 +745,11 @@ function SevasContent() {
 
   const [extraSevas, setExtraSevas] = useState<Seva[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isBooking, setIsBooking] = useState(false);
+  // Holds today's date while the booking modal is open, null when it's closed.
+  const [bookingDefaultDate, setBookingDefaultDate] = useState<string | null>(null);
   const [completedBooking, setCompletedBooking] = useState<Booking | null>(null);
+  /** Manual UPI flow — booking recorded, payment not yet verified. */
+  const [awaitingBooking, setAwaitingBooking] = useState<UpiBookingIntent | null>(null);
 
   useEffect(() => {
     getSevas().then((data) => {
@@ -375,24 +780,25 @@ function SevasContent() {
   const selectedSevas = allAvailable.filter(s => selectedIds.includes(s.id));
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
 
+  /**
+   * Manual UPI flow finished on the devotee's side. The seva counters are NOT
+   * touched here — that happens when an admin confirms the payment, so an
+   * unpaid booking can never consume a limited slot.
+   */
+  const handleAwaitingConfirmation = (intent: UpiBookingIntent) => {
+    setBookingDefaultDate(null);
+    setAwaitingBooking(intent);
+    setSelectedIds([]);
+  };
+
   const handleBookingSuccess = async (b: Booking) => {
-    setIsBooking(false);
+    setBookingDefaultDate(null);
     setCompletedBooking(b);
     setSelectedIds([]);
-    
-    // Increment booking counts for Firestore sevas
-    const dynamicIds = extraSevas.map(s => s.id!);
-    const bookedDynamicIds = b.sevas
-      .map((s) => s.sevaId)
-      .filter((id: string) => dynamicIds.includes(id));
-    
-    if (bookedDynamicIds.length > 0) {
-      const { incrementSevaBookingCount } = await import("@/lib/firestore");
-      await incrementSevaBookingCount(bookedDynamicIds);
-      // Refresh local state
-      const fresh = await getSevas();
-      setExtraSevas(fresh);
-    }
+
+    // Booking counts are incremented server-side in /api/razorpay/verify (the
+    // client is not trusted to do it), so just re-read the fresh numbers.
+    setExtraSevas(await getSevas());
   };
 
   return (
@@ -438,7 +844,7 @@ function SevasContent() {
 
       {/* Floating Summary Panel (Cart) */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-0 left-0 w-full z-40 p-4 md:p-8 animate-in slide-in-from-bottom duration-500">
+        <div className="fixed bottom-0 left-0 w-full z-40 p-4 md:p-8 animate-fade-in">
           <div className="max-w-4xl mx-auto bg-foreground text-ivory rounded-[2.5rem] md:rounded-full p-4 md:p-4 px-8 md:px-10 flex flex-col md:flex-row items-center justify-between gap-4 shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.3)]">
             <div className="flex items-center gap-6">
               <div className="flex -space-x-3">
@@ -467,7 +873,7 @@ function SevasContent() {
                 Clear
               </button>
               <button
-                onClick={() => setIsBooking(true)}
+                onClick={() => setBookingDefaultDate(todayISO())}
                 className="flex-1 md:flex-none bg-saffron-600 hover:bg-saffron-500 text-white px-10 py-4 rounded-full font-bold transition-all shadow-xl shadow-saffron-900/40 flex items-center justify-center gap-3 group"
               >
                 Proceed to Book
@@ -479,11 +885,21 @@ function SevasContent() {
       )}
 
       {/* Booking Modal */}
-      {isBooking && (
-        <BookingModal 
-          selectedSevas={selectedSevas as unknown as Seva[]} 
-          onClose={() => setIsBooking(false)} 
-          onSuccess={handleBookingSuccess} 
+      {bookingDefaultDate && (
+        <BookingModal
+          selectedSevas={selectedSevas as unknown as Seva[]}
+          defaultDate={bookingDefaultDate}
+          onClose={() => setBookingDefaultDate(null)}
+          onAwaitingConfirmation={handleAwaitingConfirmation}
+          onSuccess={handleBookingSuccess}
+        />
+      )}
+
+      {/* Awaiting Confirmation View (manual UPI) */}
+      {awaitingBooking && (
+        <AwaitingConfirmationView
+          intent={awaitingBooking}
+          onClose={() => setAwaitingBooking(null)}
         />
       )}
 

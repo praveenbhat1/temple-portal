@@ -1,45 +1,64 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Admin check: User must be signed in AND their email must match the admin email
+
+    // ── Admin check ────────────────────────────────────────────────────────
+    // An admin is a signed-in user whose email has a document in /admins,
+    // keyed BY THAT EMAIL (e.g. /admins/priest@example.com).
+    //
+    // The doc id must be the email, because that is the only shape a security
+    // rule can look up directly. lib/firestore.ts reads it the same way, so the
+    // client UI and these rules can never disagree.
     function isAdmin() {
-      return request.auth != null && 
+      return request.auth != null &&
              request.auth.token.email != null &&
-             (request.auth.token.email == "praveenbhat@gmail.com" ||
-              exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
-              get(/databases/$(database)/documents/admins/primary).data.email == request.auth.token.email);
+             request.auth.token.email_verified == true &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
     }
 
-    match /sevas/{document=**} {
+    match /sevas/{document} {
       allow read: if true;
       allow write: if isAdmin();
+      // Booking counters are incremented server-side by the Admin SDK, which
+      // bypasses these rules, so no public update carve-out is needed.
     }
-    
+
     match /announcements/{document=**} {
       allow read: if true;
       allow write: if isAdmin();
     }
-    
+
     match /bookings/{document=**} {
-      // Allow public to create bookings and search for their own via mandatory filters
-      allow create: if true; 
-      allow read: if (request.query.limit <= 20 && 
-                     (request.query.filters.phone != null || request.query.filters.bookingId != null)) || 
-                     isAdmin();
-      
-      // Only admins can update or delete
-      allow update, delete: if isAdmin();
+      // Bookings are created ONLY by the server, after a Razorpay signature
+      // has been verified (/api/razorpay/verify). The Admin SDK bypasses these
+      // rules, so denying every client write here is what stops a visitor from
+      // forging a paid booking.
+      allow create, update, delete: if isAdmin();
+
+      // Devotees look their booking up through /api/bookings/lookup, which also
+      // runs server-side. Direct client reads are admin-only.
+      //
+      // NOTE: the previous rule tried request.query.filters.phone — that field
+      // does not exist in Firestore rules (only limit/offset/orderBy), so the
+      // expression errored and every lookup silently returned nothing.
+      allow read: if isAdmin();
     }
-    
+
     match /admins/{document=**} {
+      // Readable so the signed-in admin UI can confirm its own status.
       allow read: if true;
-      allow write: if false; // Only manageable from console or setup script
+      allow write: if false; // Manage from the Firebase console only.
     }
-    
+
     match /gallery/{document=**} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /fcmTokens/{token} {
+      // Written only by /api/fcm/subscribe via the Admin SDK. Keeping this shut
+      // stops anyone from harvesting or spamming the subscriber list.
+      allow read, write: if false;
     }
   }
 }

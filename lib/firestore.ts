@@ -6,6 +6,7 @@
 import {
   collection,
   addDoc,
+  getDoc,
   getDocs,
   doc,
   updateDoc,
@@ -14,11 +15,8 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
-  where,
-  limit,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { normalizePhone } from "./utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,8 +58,14 @@ export interface Booking {
   /** Primary event date (usually from the first seva or user-chosen) */
   eventDate: string;
   paymentStatus: "pending" | "success" | "failed";
+  /** How the devotee paid. Absent on bookings made before UPI was added. */
+  paymentMethod?: "razorpay" | "upi-manual";
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
+  /** Manual UPI flow only — set when an admin settles the booking. */
+  upiRef?: string;
+  confirmedBy?: string;
+  confirmedAt?: Timestamp;
   createdAt?: Timestamp;
 }
 
@@ -81,11 +85,17 @@ export interface GalleryImage {
 
 // ─── Admins ───────────────────────────────────────────────────────────────────
 
+/**
+ * Is this email a temple admin?
+ *
+ * Looks up /admins/{email} by document id — the same shape firestore.rules
+ * checks with exists(). The old version queried an `email` *field* instead,
+ * so the UI could admit someone the rules would then reject on every write.
+ */
 export async function verifyAdmin(email: string): Promise<boolean> {
   try {
-    const q = query(collection(db, "admins"), where("email", "==", email), limit(1));
-    const snap = await getDocs(q);
-    return !snap.empty;
+    const snap = await getDoc(doc(db, "admins", email));
+    return snap.exists();
   } catch (error) {
     console.error("Firestore Error (verifyAdmin):", error);
     return false;
@@ -163,16 +173,59 @@ export function getSevaAvailability(seva: Seva): SevaAvailability {
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────
 
-export async function addBooking(booking: Omit<Booking, "id">) {
-  try {
-    return await addDoc(collection(db, "bookings"), {
-      ...booking,
-      createdAt: serverTimestamp(),
-    });
-  } catch (error) {
-    console.error("Firestore Error (addBooking):", error);
-    throw error;
+// Bookings are created only on the server, using the Admin SDK. There is
+// deliberately no client-side booking writer here — firestore.rules denies
+// client writes to `bookings`.
+//
+// Two routes create them:
+//   • /api/razorpay/verify   — after the Razorpay signature checks out (success)
+//   • /api/bookings/create   — manual UPI flow (pending, until an admin settles
+//                              it through /api/bookings/confirm)
+
+/** What /api/bookings/create hands back so the devotee can pay by UPI. */
+export interface UpiBookingIntent {
+  id: string;
+  bookingId: string;
+  totalAmount: number;
+  sevas: BookingSeva[];
+  /** upi://pay?… — opens a UPI app on mobile. */
+  upiUri: string;
+  /** PNG data URI of the same link, for desktop scanning. */
+  qrDataUrl: string;
+}
+
+/**
+ * Create a pending booking and get back the UPI link to pay it with.
+ *
+ * The booking is not paid at this point and deliberately says so — a temple
+ * admin confirms it once the money shows up.
+ */
+export async function createUpiBooking(payload: {
+  userName: string;
+  phone: string;
+  email?: string;
+  sevaIds: string[];
+  eventDate: string;
+}): Promise<UpiBookingIntent> {
+  const res = await fetch("/api/bookings/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    console.error("Booking creation failed:", result);
+    if (result?.reason === "upi_not_configured" || result?.reason === "admin_not_configured") {
+      throw new Error(
+        "Online booking isn't switched on yet. Please contact the temple office to book this seva."
+      );
+    }
+    throw new Error(result?.error || "Could not start the booking. Please try again.");
   }
+
+  return result as UpiBookingIntent;
 }
 
 export async function getBookings(): Promise<Booking[]> {
@@ -186,35 +239,32 @@ export async function getBookings(): Promise<Booking[]> {
   }
 }
 
+/**
+ * Find a devotee's bookings by booking id or phone number.
+ *
+ * Goes through /api/bookings/lookup rather than querying Firestore directly:
+ * security rules can't scope a public read to "only rows matching my own
+ * phone number", so the lookup has to happen on the server.
+ */
 export async function findBookings(queryStr: string): Promise<Booking[]> {
   try {
-    const trimmed = queryStr.trim();
-    
-    // 1. Try fetching by bookingId (SV-XXXX or just XXXX)
-    let idSearch = trimmed.toUpperCase();
-    if (!idSearch.startsWith("SV-") && idSearch.length >= 5) {
-      idSearch = `SV-${idSearch}`;
+    const res = await fetch("/api/bookings/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: queryStr }),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("Booking lookup failed:", result);
+      throw new Error(result?.error || "Could not search bookings right now.");
     }
 
-    if (idSearch.startsWith("SV-")) {
-      const q = query(collection(db, "bookings"), where("bookingId", "==", idSearch));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-      }
-    }
-
-    // 2. Search by Phone (normalized)
-    const normalized = normalizePhone(trimmed);
-    // If normalization didn't produce a valid +91 number, don't query phone
-    if (normalized.length < 10) return [];
-    
-    const q = query(collection(db, "bookings"), where("phone", "==", normalized), orderBy("createdAt", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+    return (result.bookings || []) as Booking[];
   } catch (error) {
-    console.error("Firestore Error (findBookings):", error);
-    return [];
+    console.error("Error (findBookings):", error);
+    throw error;
   }
 }
 
@@ -295,24 +345,5 @@ export async function deleteGalleryImage(id: string) {
   }
 }
 
-/**
- * Increment the booking count for a list of sevas.
- * Usually called after a successful payment.
- */
-export async function incrementSevaBookingCount(sevaIds: string[]) {
-  const { runTransaction } = await import("firebase/firestore");
-  try {
-    await runTransaction(db, async (transaction) => {
-      for (const id of sevaIds) {
-        const sevaRef = doc(db, "sevas", id);
-        const sevaSnap = await transaction.get(sevaRef);
-        if (sevaSnap.exists()) {
-          const current = sevaSnap.data().currentBookings || 0;
-          transaction.update(sevaRef, { currentBookings: current + 1 });
-        }
-      }
-    });
-  } catch (error) {
-    console.error("Firestore Error (incrementSevaBookingCount):", error);
-  }
-}
+// Seva booking counters are incremented server-side in /api/razorpay/verify
+// with FieldValue.increment(), so a devotee's browser can never inflate them.

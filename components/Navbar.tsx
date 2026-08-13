@@ -57,8 +57,24 @@ export default function Navbar() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50);
-    window.addEventListener("scroll", handleScroll);
+    let ticking = false;
+    let localScrolled = false;
+
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const isPastThreshold = window.scrollY > 50;
+          if (localScrolled !== isPastThreshold) {
+            localScrolled = isPastThreshold;
+            setScrolled(isPastThreshold);
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {

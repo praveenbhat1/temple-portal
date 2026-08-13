@@ -10,11 +10,48 @@ import {
   deleteAnnouncement,
   Announcement,
 } from "@/lib/firestore";
-import { Pencil, Trash2, Plus, X } from "lucide-react";
+import { Pencil, Trash2, Plus, X, Bell, BellOff } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
+import { auth } from "@/lib/firebase";
 
 type FormState = { title: string; description: string; date: string };
 const EMPTY: FormState = { title: "", description: "", date: "" };
+
+/**
+ * Push the announcement to every subscribed devotee.
+ * Returns a short human-readable outcome for the admin, or null on success
+ * with nobody subscribed.
+ */
+async function pushToDevotees(a: { title: string; description: string; id?: string }) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("You are signed out — please sign in again.");
+
+  const idToken = await user.getIdToken();
+
+  const res = await fetch("/api/notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({
+      title: a.title,
+      body: a.description.slice(0, 240),
+      announcementId: a.id || "",
+      url: "/announcements",
+    }),
+  });
+
+  const result = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    if (result?.reason === "admin_not_configured") {
+      throw new Error(
+        "Notifications aren't configured on the server yet (FIREBASE_SERVICE_ACCOUNT is missing)."
+      );
+    }
+    throw new Error(result?.error || "Could not send notifications.");
+  }
+
+  return result as { sent: number; failed: number; pruned: number; note?: string };
+}
 
 function formatDisplayDate(date: Timestamp | string | undefined): string {
   if (!date) return "";
@@ -30,6 +67,8 @@ export default function AdminAnnouncementsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
+  const [notify, setNotify] = useState(true);
+  const [notifyStatus, setNotifyStatus] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -37,7 +76,18 @@ export default function AdminAnnouncementsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  // Fetch first, then set state, so nothing updates synchronously during the
+  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const data = await getAnnouncements();
+      if (!alive) return;
+      setItems(data);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const openAdd = () => { setForm(EMPTY); setEditId(null); setShowForm(true); setError(""); };
 
@@ -58,16 +108,37 @@ export default function AdminAnnouncementsPage() {
       return;
     }
     setSaving(true);
+    setNotifyStatus("");
     try {
       const data = { title: form.title, description: form.description, date: form.date };
+      let newId: string | undefined;
+
       if (editId) {
         await updateAnnouncement(editId, data);
       } else {
-        await addAnnouncement(data);
+        const ref = await addAnnouncement(data);
+        newId = ref.id;
       }
+
       setShowForm(false);
       setEditId(null);
       await load();
+
+      // Notifying is a separate step: a failure here must not make the admin
+      // think the announcement itself didn't save.
+      if (notify) {
+        try {
+          const result = await pushToDevotees({ ...data, id: newId });
+          setNotifyStatus(
+            result.note
+              ? result.note
+              : `Notification sent to ${result.sent} devotee${result.sent === 1 ? "" : "s"}` +
+                  (result.failed ? ` (${result.failed} failed)` : "")
+          );
+        } catch (err) {
+          setNotifyStatus(`Announcement saved, but notification failed: ${(err as Error).message}`);
+        }
+      }
     } catch (err) {
       const errorObj = err as Error;
       setError(errorObj.message || "Failed to save announcement.");
@@ -96,6 +167,20 @@ export default function AdminAnnouncementsPage() {
           <Plus size={16} /> New Announcement
         </button>
       </div>
+
+      {notifyStatus && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <Bell size={16} className="mt-0.5 shrink-0 text-amber-600" />
+          <p className="flex-1 text-sm text-amber-900">{notifyStatus}</p>
+          <button
+            onClick={() => setNotifyStatus("")}
+            className="text-amber-400 transition-colors hover:text-amber-700"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Modal Form */}
       {showForm && (
@@ -138,6 +223,46 @@ export default function AdminAnnouncementsPage() {
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </div>
+              {/* Push notification opt-in */}
+              <button
+                type="button"
+                onClick={() => setNotify((n) => !n)}
+                className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+                  notify
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                }`}
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    notify ? "bg-amber-600 text-white" : "bg-gray-200 text-gray-500"
+                  }`}
+                >
+                  {notify ? <Bell size={16} /> : <BellOff size={16} />}
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-800">
+                    {notify ? "Notify all devotees" : "Don't notify"}
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {notify
+                      ? "Everyone who enabled temple alerts gets a push notification."
+                      : "Post silently — no notification will be sent."}
+                  </span>
+                </span>
+                <span
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    notify ? "bg-amber-600" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      notify ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-gray-200 text-gray-600 hover:bg-gray-50 font-semibold py-2.5 rounded-xl transition-colors text-sm">Cancel</button>

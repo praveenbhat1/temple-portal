@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { findBookings, Booking } from "@/lib/firestore";
-import { Search, Fingerprint, Calendar, IndianRupee, Download, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Search, Fingerprint, Calendar, IndianRupee, Download, CheckCircle2, XCircle, AlertCircle, Clock3 } from "lucide-react";
 import Image from "next/image";
 import { generatePremiumReceipt } from "@/lib/receipt";
 
@@ -12,16 +12,23 @@ export default function TrackBookingPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Booking[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     setSearching(true);
+    setSearchError("");
     try {
       const data = await findBookings(query.trim());
       setResults(data);
     } catch (error) {
+      // Previously this failed silently and the page just showed nothing.
       console.error("Search error:", error);
+      setResults(null);
+      setSearchError(
+        (error as Error).message || "Could not search bookings right now. Please try again."
+      );
     } finally {
       setSearching(false);
     }
@@ -76,6 +83,13 @@ export default function TrackBookingPage() {
           <p className="text-[10px] text-gray-400 mt-4 px-4 uppercase tracking-widest font-bold text-center sm:text-left">
             Tip: Use the same phone number used during booking
           </p>
+
+          {searchError && (
+            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4">
+              <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
+              <p className="text-sm text-red-700">{searchError}</p>
+            </div>
+          )}
         </form>
 
         {/* Results Area */}
@@ -138,19 +152,32 @@ export default function TrackBookingPage() {
                         <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-4 py-1.5 rounded-full text-[10px] font-bold border border-green-100 uppercase tracking-widest">
                           <CheckCircle2 size={12} /> Confirmed
                         </span>
+                      ) : booking.paymentStatus === "pending" ? (
+                        <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-4 py-1.5 rounded-full text-[10px] font-bold border border-amber-100 uppercase tracking-widest">
+                          <Clock3 size={12} /> Awaiting Confirmation
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 px-4 py-1.5 rounded-full text-[10px] font-bold border border-red-100 uppercase tracking-widest">
                           <XCircle size={12} /> {booking.paymentStatus}
                         </span>
                       )}
 
-                      <button
-                        onClick={() => generateReceipt(booking)}
-                        className="w-full md:w-auto bg-foreground text-ivory px-6 py-3 rounded-2xl text-xs font-bold hover:bg-saffron-700 transition-all shadow-lg flex items-center justify-center gap-2 group"
-                      >
-                        <Download size={16} className="group-hover:-translate-y-0.5 transition-transform" />
-                        Download Receipt
-                      </button>
+                      {/* A receipt is only meaningful once the temple has
+                          confirmed the money actually arrived. */}
+                      {booking.paymentStatus === "success" ? (
+                        <button
+                          onClick={() => generateReceipt(booking)}
+                          className="w-full md:w-auto bg-foreground text-ivory px-6 py-3 rounded-2xl text-xs font-bold hover:bg-saffron-700 transition-all shadow-lg flex items-center justify-center gap-2 group"
+                        >
+                          <Download size={16} className="group-hover:-translate-y-0.5 transition-transform" />
+                          Download Receipt
+                        </button>
+                      ) : booking.paymentStatus === "pending" ? (
+                        <p className="text-[11px] text-gray-400 leading-relaxed md:text-right max-w-[220px]">
+                          The temple office is verifying your payment. Your receipt will appear
+                          here once it is confirmed.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>

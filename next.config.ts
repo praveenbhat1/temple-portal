@@ -25,12 +25,6 @@ const nextConfig: NextConfig = {
         hostname: "www.gstatic.com",
       },
     ],
-    localPatterns: [
-      {
-        pathname: "/**",
-        search: "?*",
-      },
-    ],
   },
 };
 

@@ -28,10 +28,36 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Runs before React hydrates so the homepage is covered from the very first
+ * paint when the temple-entrance intro is about to play. Without this the hero
+ * flashes for a frame before the doors mount. TempleEntrance removes the class
+ * once its own overlay has painted.
+ */
+const ENTRANCE_PREPAINT = `
+try {
+  var replay = location.search.indexOf("entrance=replay") !== -1;
+  if (location.pathname === "/" &&
+      (replay || (!sessionStorage.getItem("svt-entrance-seen") &&
+                  !matchMedia("(prefers-reduced-motion: reduce)").matches))) {
+    document.documentElement.classList.add("entrance-pending");
+  }
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
+    // suppressHydrationWarning: the ENTRANCE_PREPAINT script below adds the
+    // "entrance-pending" class to <html> before React hydrates, which React
+    // would otherwise report as a className mismatch.
+    <html
+      lang="en"
+      className="scroll-smooth"
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <body className={`${inter.variable} ${playfair.variable} antialiased bg-cream selection:bg-gold-200`}>
+        <script dangerouslySetInnerHTML={{ __html: ENTRANCE_PREPAINT }} />
         <Navbar />
         <main className="min-h-screen">
           {children}

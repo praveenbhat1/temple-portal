@@ -2,16 +2,17 @@
 /**
  * Admin Bookings Management - View and filter seva bookings.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { getBookings, Booking } from "@/lib/firestore";
-import { 
-  Search, 
-  Filter, 
-  Calendar, 
-  Phone, 
-  IndianRupee, 
-  CheckCircle2, 
-  XCircle, 
+import { auth } from "@/lib/firebase";
+import {
+  Search,
+  Filter,
+  Calendar,
+  Phone,
+  IndianRupee,
+  CheckCircle2,
+  XCircle,
   Clock,
   Download,
   ChevronDown
@@ -19,16 +20,99 @@ import {
 import Image from "next/image";
 import { generatePremiumReceipt } from "@/lib/receipt";
 
+/**
+ * Settle a pending UPI booking.
+ *
+ * Bookings taken through the manual UPI flow arrive as `pending` — plain UPI
+ * gives the server no callback, so a human has to confirm the money landed.
+ * The write itself happens in /api/bookings/confirm under the Admin SDK; this
+ * only carries the admin's identity to it.
+ */
+async function settleBooking(id: string, action: "confirm" | "reject") {
+  const user = auth.currentUser;
+  if (!user) throw new Error("You are signed out — please sign in again.");
+
+  const idToken = await user.getIdToken();
+
+  const res = await fetch("/api/bookings/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ id, action }),
+  });
+
+  const result = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    if (result?.reason === "admin_not_configured") {
+      throw new Error(
+        "Booking confirmation isn't configured on the server yet (FIREBASE_SERVICE_ACCOUNT is missing)."
+      );
+    }
+    throw new Error(result?.error || "Could not update the booking.");
+  }
+
+  return result as { paymentStatus: "success" | "failed" };
+}
+
 export default function AdminBookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
+  /** Booking id currently being settled, so its row can show progress. */
+  const [settling, setSettling] = useState<string | null>(null);
+  const [settleError, setSettleError] = useState("");
+  /**
+   * Row awaiting a second click. Marking money received is not undoable from
+   * the UI, so it takes two deliberate clicks rather than one stray one.
+   */
+  const [pendingAction, setPendingAction] = useState<{ id: string; action: "confirm" | "reject" } | null>(null);
 
   useEffect(() => {
     getBookings().then(setBookings).finally(() => setLoading(false));
   }, []);
+
+  const handleSettle = async (booking: Booking, action: "confirm" | "reject") => {
+    if (!booking.id) return;
+
+    // First click arms the row; the second one goes through.
+    if (!isArmed(booking, action)) {
+      setPendingAction({ id: booking.id, action });
+      setSettleError("");
+      return;
+    }
+
+    setPendingAction(null);
+    setSettling(booking.id);
+    setSettleError("");
+
+    try {
+      const result = await settleBooking(booking.id, action);
+      setBookings((prev) =>
+        prev.map((b) => (b.id === booking.id ? { ...b, paymentStatus: result.paymentStatus } : b))
+      );
+    } catch (err) {
+      setSettleError((err as Error).message);
+    } finally {
+      setSettling(null);
+    }
+  };
+
+  /** Unpaid UPI bookings needing a human decision — the daily work queue. */
+  const pendingCount = bookings.filter((b) => b.paymentStatus === "pending").length;
+
+  /**
+   * Is this row's button waiting on its confirming second click?
+   *
+   * The null check is explicit because Booking.id is optional — comparing
+   * pendingAction?.id to an undefined booking.id would match every row at once.
+   */
+  const isArmed = (booking: Booking, action: "confirm" | "reject") =>
+    pendingAction !== null &&
+    booking.id !== undefined &&
+    pendingAction.id === booking.id &&
+    pendingAction.action === action;
 
   const filteredBookings = bookings.filter(b => {
     const matchesSearch = b.userName.toLowerCase().includes(search.toLowerCase()) || 
@@ -37,6 +121,32 @@ export default function AdminBookings() {
     const matchesDate = !dateFilter || b.bookingDate === dateFilter;
     return matchesSearch && matchesStatus && matchesDate;
   });
+
+  // Group bookings by bookingDate
+  const groups = filteredBookings.reduce((acc, booking) => {
+    const date = booking.bookingDate || "Unknown Date";
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(booking);
+    return acc;
+  }, {} as Record<string, Booking[]>);
+
+  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+  const formatGroupDate = (dateStr: string) => {
+    if (dateStr === "Unknown Date") return dateStr;
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      return date.toLocaleDateString("en-IN", {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
 
   const generateReceipt = (booking: Booking) => {
     const doc = generatePremiumReceipt(booking);
@@ -59,10 +169,23 @@ export default function AdminBookings() {
           <h1 className="text-3xl font-serif text-gray-900">Seva Bookings</h1>
           <p className="text-sm text-gray-500 mt-1">Track and manage all sacred offerings.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-saffron-600 bg-saffron-50 px-4 py-2 rounded-full border border-saffron-100">
-          <Clock size={14} /> {filteredBookings.length} Total Bookings
+        <div className="flex items-center gap-3">
+          {pendingCount > 0 && (
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-amber-700 bg-amber-50 px-4 py-2 rounded-full border border-amber-100">
+              <Clock size={14} /> {pendingCount} Awaiting Payment
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-saffron-600 bg-saffron-50 px-4 py-2 rounded-full border border-saffron-100">
+            {filteredBookings.length} Total Bookings
+          </div>
         </div>
       </div>
+
+      {settleError && (
+        <div className="bg-red-50 border border-red-100 text-red-700 text-sm rounded-2xl px-6 py-4">
+          {settleError}
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="bg-white p-4 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col lg:flex-row gap-4 items-end">
@@ -127,7 +250,7 @@ export default function AdminBookings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredBookings.length === 0 ? (
+              {sortedDates.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-8 py-20 text-center text-gray-400">
                     <div className="flex flex-col items-center gap-4">
@@ -137,72 +260,126 @@ export default function AdminBookings() {
                   </td>
                 </tr>
               ) : (
-                filteredBookings.map((booking) => (
-                  <tr key={booking.id} className="group hover:bg-gray-50/50 transition-colors">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-saffron-50 flex items-center justify-center text-saffron-600 font-bold border border-saffron-100">
-                          {booking.userName[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900">{booking.userName}</p>
-                          <div className="flex flex-col gap-0.5 mt-1">
-                            <p className="text-[10px] text-saffron-600 font-mono font-bold tracking-wider">{booking.bookingId}</p>
-                            <p className="text-xs text-gray-400 flex items-center gap-1">
-                              <Phone size={12} /> {booking.phone}
-                            </p>
+                sortedDates.map((date) => (
+                  <Fragment key={date}>
+                    {/* Date Group Header Row */}
+                    <tr className="bg-saffron-50/20 border-y border-saffron-100/30">
+                      <td colSpan={6} className="px-8 py-3 text-xs font-bold text-saffron-800 tracking-wider font-sans">
+                        📅 Bookings on {formatGroupDate(date)} ({groups[date].length})
+                      </td>
+                    </tr>
+                    {groups[date].map((booking) => (
+                      <tr key={booking.id} className="group hover:bg-gray-50/50 transition-colors">
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-saffron-50 flex items-center justify-center text-saffron-600 font-bold border border-saffron-100">
+                              {booking.userName[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900">{booking.userName}</p>
+                              <div className="flex flex-col gap-0.5 mt-1">
+                                <p className="text-[10px] text-saffron-600 font-mono font-bold tracking-wider">{booking.bookingId}</p>
+                                <p className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Phone size={12} /> {booking.phone}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-6">
-                      <div className="flex flex-wrap gap-1.5 max-w-[200px]">
-                        {booking.sevas.map((s, idx) => (
-                          <span key={idx} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md text-[10px] font-medium border border-gray-200">
-                            {s.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-6">
-                      <p className="font-serif font-bold text-gray-900 flex items-center gap-1">
-                        <IndianRupee size={14} className="text-gray-400" />
-                        {booking.totalAmount.toLocaleString("en-IN")}
-                      </p>
-                    </td>
-                    <td className="px-6 py-6">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                          <span className="w-12 uppercase">Booked:</span>
-                          <span className="text-gray-600 font-bold">{booking.bookingDate}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                          <span className="w-12 uppercase">Event:</span>
-                          <span className="text-saffron-700 font-bold">{booking.eventDate}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-6">
-                      {booking.paymentStatus === "success" ? (
-                        <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-full text-[10px] font-bold border border-green-100">
-                          <CheckCircle2 size={12} /> Success
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 px-3 py-1 rounded-full text-[10px] font-bold border border-red-100">
-                          <XCircle size={12} /> {booking.paymentStatus}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <button
-                        onClick={() => generateReceipt(booking)}
-                        className="text-gray-400 hover:text-saffron-600 transition-colors p-2 hover:bg-saffron-50 rounded-xl"
-                        title="Download Receipt"
-                      >
-                        <Download size={20} />
-                      </button>
-                    </td>
-                  </tr>
+                        </td>
+                        <td className="px-6 py-6">
+                          <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                            {booking.sevas.map((s, idx) => (
+                              <span key={idx} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md text-[10px] font-medium border border-gray-200">
+                                {s.name}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-6">
+                          <p className="font-serif font-bold text-gray-900 flex items-center gap-1">
+                            <IndianRupee size={14} className="text-gray-400" />
+                            {booking.totalAmount.toLocaleString("en-IN")}
+                          </p>
+                        </td>
+                        <td className="px-6 py-6">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                              <span className="w-12 uppercase">Booked:</span>
+                              <span className="text-gray-600 font-bold">{booking.bookingDate}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                              <span className="w-12 uppercase">Event:</span>
+                              <span className="text-saffron-700 font-bold">{booking.eventDate}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-6">
+                          {booking.paymentStatus === "success" ? (
+                            <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-full text-[10px] font-bold border border-green-100">
+                              <CheckCircle2 size={12} /> Success
+                            </span>
+                          ) : booking.paymentStatus === "pending" ? (
+                            <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-[10px] font-bold border border-amber-100">
+                              <Clock size={12} /> Awaiting Payment
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 px-3 py-1 rounded-full text-[10px] font-bold border border-red-100">
+                              <XCircle size={12} /> {booking.paymentStatus}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          {booking.paymentStatus === "pending" ? (
+                            <div className="flex items-center justify-end gap-2">
+                              {settling === booking.id ? (
+                                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                  Saving…
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleSettle(booking, "confirm")}
+                                    className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors border ${
+                                      isArmed(booking, "confirm")
+                                        ? "bg-green-600 text-white border-green-600"
+                                        : "bg-green-50 text-green-700 border-green-100 hover:bg-green-100"
+                                    }`}
+                                    title="Mark this booking as paid"
+                                  >
+                                    {isArmed(booking, "confirm") ? "Sure?" : "Mark Paid"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleSettle(booking, "reject")}
+                                    className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors border ${
+                                      isArmed(booking, "reject")
+                                        ? "bg-red-600 text-white border-red-600"
+                                        : "bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100"
+                                    }`}
+                                    title="Mark this booking as failed"
+                                  >
+                                    {isArmed(booking, "reject") ? "Sure?" : "Reject"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          ) : booking.paymentStatus === "success" ? (
+                            <button
+                              onClick={() => generateReceipt(booking)}
+                              className="text-gray-400 hover:text-saffron-600 transition-colors p-2 hover:bg-saffron-50 rounded-xl"
+                              title="Download Receipt"
+                            >
+                              <Download size={20} />
+                            </button>
+                          ) : (
+                            // No receipt for a failed booking — nothing was received.
+                            <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </tbody>

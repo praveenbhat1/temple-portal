@@ -20,7 +20,18 @@ export default function AdminGalleryPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  // Fetch first, then set state, so nothing updates synchronously during the
+  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const data = await getGalleryImages();
+      if (!alive) return;
+      setImages(data);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);

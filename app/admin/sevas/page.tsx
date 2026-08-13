@@ -62,7 +62,18 @@ export default function AdminSevasPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  // Fetch first, then set state, so nothing updates synchronously during the
+  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const freshSevas = await getSevas();
+      if (!alive) return;
+      setSevas(freshSevas);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const openAdd = () => { setForm(EMPTY); setEditId(null); setShowForm(true); setError(""); };
 

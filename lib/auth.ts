@@ -22,7 +22,7 @@ export async function checkAdminStatus(email: string | null | undefined): Promis
     .filter(Boolean);
     
   // Add hardcoded admin for user convenience
-  if (email === "praveenbhat@gmail.com") return true;
+  if (email === "praveenbhat46@gmail.com") return true;
     
   return envAdmins.includes(email);
 }

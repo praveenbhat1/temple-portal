@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
 
       router.replace("/admin");
     } catch (err: unknown) {
-      const errorObj = err as any;
+      const errorObj = err as { code?: string };
       console.error("Login Error:", errorObj);
       
       let message = "Failed to sign in. Please check your credentials.";

@@ -7,6 +7,7 @@ import SevaCard from "@/components/SevaCard";
 import { ArrowRight, MapPin, Clock } from "lucide-react";
 import NotificationButton from "@/components/NotificationButton";
 import DivineDivider from "@/components/DivineDivider";
+import TempleEntrance from "@/components/TempleEntrance";
 
 export default function Home() {
   const [sevas, setSevas] = useState<Seva[]>([]);
@@ -36,6 +37,8 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-0 overflow-x-hidden">
+      <TempleEntrance />
+
       {/* ── HERO SECTION ── */}
       <section className="relative min-h-screen flex items-center pt-28 lg:pt-24 pb-16 overflow-hidden bg-cream">
         <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[300px] md:w-[800px] h-[300px] md:h-[800px] bg-gold-200/10 blur-[80px] md:blur-[150px] rounded-full pointer-events-none" />
