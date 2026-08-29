@@ -83,6 +83,12 @@ export interface Booking {
   devoteeUpiRef?: string;
   /** When the devotee said they had paid. Set by /api/bookings/paid. */
   devoteeMarkedPaidAt?: Timestamp;
+  /**
+   * True when the devotee confirmed payment without a reference number. The
+   * temple must then match the credit by amount and timing alone, so these
+   * are worth checking first.
+   */
+  needsManualMatch?: boolean;
   confirmedBy?: string;
   confirmedAt?: Timestamp;
   createdAt?: Timestamp;

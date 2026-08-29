@@ -744,6 +744,17 @@ function PaymentRef({ booking }: { booking: Booking }) {
       </p>
     );
   }
+  // Said they paid but had no reference — match by amount and time instead.
+  if (booking.needsManualMatch) {
+    return (
+      <p
+        className="text-[10px] text-amber-700 mt-1 flex items-center gap-1"
+        title="Devotee confirmed payment but gave no reference number"
+      >
+        <Hash size={9} /> no reference given
+      </p>
+    );
+  }
   return null;
 }
 

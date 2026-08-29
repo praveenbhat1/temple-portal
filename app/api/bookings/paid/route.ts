@@ -89,6 +89,10 @@ export async function POST(req: Request) {
     await ref.update({
       devoteeMarkedPaidAt: FieldValue.serverTimestamp(),
       ...(upiRef ? { devoteeUpiRef: upiRef } : {}),
+      // Flagged when the devotee said they paid but could not produce a
+      // reference. The temple then has to match the credit by amount and time
+      // alone, so the admin list surfaces these for closer checking.
+      needsManualMatch: !upiRef,
     });
 
     return NextResponse.json({ ok: true, alreadySettled: false });

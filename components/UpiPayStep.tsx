@@ -13,12 +13,13 @@
  * an admin verifies (`devoteeUpiRef` vs `upiRef`) and the booking stays
  * `pending` until a human matches it against the temple's bank statement.
  */
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   Check,
   CheckCircle2,
   Clock3,
   Copy,
+  AlertCircle,
   Loader2,
   QrCode,
   ShieldCheck,
@@ -71,6 +72,21 @@ export default function UpiPayStep({
   /** Flips once a payment app has been opened, which unlocks the next step. */
   const [opened, setOpened] = useState(false);
   /**
+   * What the devotee says happened, once they are back from the UPI app.
+   *
+   * null    — not asked yet
+   * "paid"  — they say it went through; we ask for the reference
+   * "failed"— it did not; they stay on this screen and can retry
+   *
+   * This exists because plain UPI gives the server no callback: nothing here
+   * can observe whether money actually moved. The most this screen can
+   * honestly do is ask, make the answer deliberate, and collect the one piece
+   * of evidence that lets the temple check — the UPI reference.
+   */
+  const [outcome, setOutcome] = useState<"paid" | "failed" | null>(null);
+  /** Set when the devotee says they cannot find their reference number. */
+  const [refUnavailable, setRefUnavailable] = useState(false);
+  /**
    * Lets the devotee switch between paying on this device and scanning.
    * null = follow the detected platform.
    *
@@ -95,6 +111,33 @@ export default function UpiPayStep({
   const detectedMobile = platform === "android" || platform === "ios";
   const isMobile = modeOverride ? modeOverride === "apps" : detectedMobile;
   const amount = `₹${intent.totalAmount.toLocaleString("en-IN")}`;
+
+  /**
+   * A UPI reference (RRN/UTR) is 12 digits at most banks; a few return a
+   * longer alphanumeric string. Loose enough not to reject a real one,
+   * tight enough that a stray tap or a placeholder does not pass.
+   */
+  const refLooksValid = /^[A-Za-z0-9]{8,22}$/.test(upiRef.trim());
+  const canConfirm = outcome === "paid" && (refUnavailable || refLooksValid);
+
+  /**
+   * Ask the question when the devotee comes back to this tab.
+   *
+   * Switching to the UPI app hides the page; returning shows it again. That
+   * moment is the only signal available that the payment attempt is over, so
+   * it is where the question belongs — rather than leaving a single
+   * "I have paid" button sitting there from the start, which is as easy to
+   * press without paying as with.
+   */
+  useEffect(() => {
+    if (!opened || outcome !== null) return;
+
+    const ask = () => {
+      if (document.visibilityState === "visible") setOutcome("paid");
+    };
+    document.addEventListener("visibilitychange", ask);
+    return () => document.removeEventListener("visibilitychange", ask);
+  }, [opened, outcome]);
 
   const copyReference = async () => {
     try {
@@ -242,68 +285,150 @@ export default function UpiPayStep({
             </p>
           </div>
 
-          <form onSubmit={handleDone} className="space-y-4">
-            <div>
-              <label
-                htmlFor="upi-ref"
-                className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1"
-              >
-                UPI reference number{" "}
-                <span className="text-gray-300 normal-case tracking-normal font-medium">
-                  — optional, but confirms you faster
-                </span>
-              </label>
-              <input
-                id="upi-ref"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={upiRef}
-                onChange={(e) => {
-                  setUpiRef(e.target.value);
-                  setError("");
-                }}
-                placeholder="e.g. 418273645102"
-                maxLength={30}
-                className="w-full bg-white border border-saffron-100 rounded-2xl px-5 py-4 text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
-              />
-              <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
-                After paying, your UPI app shows a 12-digit reference (sometimes called UTR or
-                transaction ID). Entering it here lets the temple office confirm your seva in
-                minutes instead of hours.
+          {/*
+            The question, asked once — not a button sitting there from the
+            start. Nothing here can verify the payment, so the design goal is
+            that saying "paid" is a deliberate act with evidence attached,
+            and that saying "it failed" is an equally easy, obvious way out.
+          */}
+          {outcome === null ? (
+            <div className="bg-white border border-saffron-100 rounded-2xl p-5 shadow-sm space-y-4">
+              <p className="text-sm font-bold text-gray-900">Have you completed the payment?</p>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Pay using one of the options above first. Tell us only once your UPI app has
+                confirmed the transfer.
               </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOutcome("paid")}
+                  className="flex-1 bg-saffron-700 hover:bg-saffron-800 text-ivory font-bold py-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  <CheckCircle2 size={17} />
+                  Yes, I&apos;ve paid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutcome("failed")}
+                  className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 font-bold py-4 rounded-xl text-sm transition-colors"
+                >
+                  Not yet / it failed
+                </button>
+              </div>
             </div>
-
-            {error && (
-              <p className="text-red-600 text-xs font-bold bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-                {error}
+          ) : outcome === "failed" ? (
+            /* The payment did not go through. The booking stays exactly where
+               it is — pending, unconfirmed — and the devotee can simply try
+               again. Nothing is recorded as paid. */
+            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 space-y-3">
+              <p className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                <AlertCircle size={16} />
+                No payment recorded
               </p>
-            )}
+              <p className="text-[11px] text-amber-800/80 leading-relaxed">
+                Your booking <span className="font-mono font-bold">{intent.bookingId}</span> is
+                still held and nothing has been charged. Try paying again with the buttons above,
+                or use the bank transfer details below. If your bank refused the payment, waiting a
+                few minutes and retrying usually works.
+              </p>
+              <button
+                type="button"
+                onClick={() => setOutcome(null)}
+                className="w-full bg-white hover:bg-amber-50 text-amber-900 border border-amber-200 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-colors"
+              >
+                I&apos;ve paid now
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleDone} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="upi-ref"
+                  className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1"
+                >
+                  UPI reference number
+                </label>
+                <input
+                  id="upi-ref"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  autoFocus
+                  value={upiRef}
+                  onChange={(e) => {
+                    setUpiRef(e.target.value);
+                    setError("");
+                    setRefUnavailable(false);
+                  }}
+                  placeholder="e.g. 418273645102"
+                  maxLength={30}
+                  className="w-full bg-white border border-saffron-100 rounded-2xl px-5 py-4 text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+                />
+                <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
+                  Your UPI app shows this after a successful payment — 12 digits, sometimes called
+                  UTR or transaction ID. It is what lets the temple match your payment, so your
+                  seva is confirmed in minutes rather than hours.
+                </p>
+                {!refLooksValid && !refUnavailable && (
+                  <button
+                    type="button"
+                    onClick={() => setRefUnavailable(true)}
+                    className="text-[11px] font-bold text-gray-400 hover:text-saffron-700 underline decoration-gray-200 underline-offset-4 mt-2 px-1 transition-colors"
+                  >
+                    I can&apos;t find my reference number
+                  </button>
+                )}
+                {refUnavailable && (
+                  <p className="text-[11px] text-amber-800/90 bg-amber-50/70 border border-amber-100 rounded-xl px-4 py-3 mt-2 leading-relaxed">
+                    That&apos;s fine — the temple will match your payment by amount and time
+                    instead. It may take a little longer to confirm.
+                  </p>
+                )}
+              </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={18} />
-                  I have completed the payment
-                </>
+              {error && (
+                <p className="text-red-600 text-xs font-bold bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                  {error}
+                </p>
               )}
-            </button>
 
-            {isMobile && !opened && (
-              <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-                Pay first using one of the buttons above, then come back to this page.
-              </p>
-            )}
-          </form>
+              <button
+                type="submit"
+                disabled={submitting || !canConfirm}
+                className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-40 disabled:cursor-not-allowed text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    Confirm my payment
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOutcome("failed");
+                  setUpiRef("");
+                  setRefUnavailable(false);
+                }}
+                className="w-full text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-gray-700 py-1 transition-colors"
+              >
+                Actually, the payment didn&apos;t go through
+              </button>
+            </form>
+          )}
+
+          {isMobile && !opened && outcome === null && (
+            <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+              Pay first using one of the buttons above, then come back to this page.
+            </p>
+          )}
 
           <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-5 space-y-2">
             <p className="text-xs font-bold text-amber-900 flex items-center gap-2">
