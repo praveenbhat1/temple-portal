@@ -2,7 +2,6 @@
 import React from 'react';
 import { Seva, SevaAvailability, getSevaAvailability } from "@/lib/firestore";
 import { Calendar, Clock, Lock, CheckCircle2 } from "lucide-react";
-import Image from "next/image";
 
 interface Props {
   seva: Seva;

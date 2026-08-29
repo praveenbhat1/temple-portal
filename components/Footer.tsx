@@ -1,7 +1,6 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Phone, Mail, MapPin, Globe2, Link2 } from "lucide-react";
 
 import { usePathname } from "next/navigation";

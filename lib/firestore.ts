@@ -11,6 +11,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   query,
   orderBy,
   serverTimestamp,
@@ -62,8 +63,20 @@ export interface Booking {
   paymentMethod?: "razorpay" | "upi-manual";
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
-  /** Manual UPI flow only — set when an admin settles the booking. */
+  /**
+   * Manual UPI flow only — the reference an ADMIN matched against the temple's
+   * bank statement. This is the verified one; it goes on the receipt.
+   */
   upiRef?: string;
+  /**
+   * The reference the DEVOTEE typed on the pay screen. An unverified claim —
+   * anyone can type twelve digits — kept in its own field so it can never be
+   * mistaken for `upiRef` above. It exists to make an admin's reconciliation
+   * quick, not to stand in for it.
+   */
+  devoteeUpiRef?: string;
+  /** When the devotee said they had paid. Set by /api/bookings/paid. */
+  devoteeMarkedPaidAt?: Timestamp;
   confirmedBy?: string;
   confirmedAt?: Timestamp;
   createdAt?: Timestamp;
@@ -81,6 +94,72 @@ export interface GalleryImage {
   id?: string;
   imageUrl: string;
   uploadedAt?: Timestamp;
+}
+
+// ─── Live subscriptions ───────────────────────────────────────────────────────
+
+/**
+ * Real-time reads, used by every page that displays temple content.
+ *
+ * These exist because the one-shot getters below only run on mount: a price
+ * edited in /admin did not reach a devotee with the page already open, and did
+ * not reach anyone at all until their next full page load. A temple changing a
+ * seva fee expects the website to say so, not to say so eventually.
+ *
+ * Each returns its unsubscribe function — call it from the effect's cleanup or
+ * the listener outlives the component.
+ *
+ * Sorting is done here rather than with orderBy() on purpose. Firestore's
+ * orderBy silently EXCLUDES documents missing the field, so a seva or photo
+ * saved without a timestamp would be invisible rather than merely last.
+ */
+function byTimestampDesc<T>(field: keyof T) {
+  const millis = (row: T) => {
+    const value = row[field] as Timestamp | undefined;
+    return value?.toMillis?.() ?? 0;
+  };
+  return (a: T, b: T) => millis(b) - millis(a);
+}
+
+/** Live list of sevas. Returns an unsubscribe function. */
+export function subscribeSevas(onData: (sevas: Seva[]) => void): () => void {
+  return onSnapshot(
+    collection(db, "sevas"),
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Seva))),
+    (error) => console.error("Firestore Error (subscribeSevas):", error)
+  );
+}
+
+/** Live list of announcements, newest first. Returns an unsubscribe function. */
+export function subscribeAnnouncements(
+  onData: (items: Announcement[]) => void
+): () => void {
+  return onSnapshot(
+    collection(db, "announcements"),
+    (snap) =>
+      onData(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Announcement))
+          .sort(byTimestampDesc<Announcement>("createdAt"))
+      ),
+    (error) => console.error("Firestore Error (subscribeAnnouncements):", error)
+  );
+}
+
+/** Live gallery, newest first. Returns an unsubscribe function. */
+export function subscribeGalleryImages(
+  onData: (images: GalleryImage[]) => void
+): () => void {
+  return onSnapshot(
+    collection(db, "gallery"),
+    (snap) =>
+      onData(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as GalleryImage))
+          .sort(byTimestampDesc<GalleryImage>("uploadedAt"))
+      ),
+    (error) => console.error("Firestore Error (subscribeGalleryImages):", error)
+  );
 }
 
 // ─── Admins ───────────────────────────────────────────────────────────────────
@@ -213,26 +292,61 @@ export async function createUpiBooking(payload: {
     body: JSON.stringify(payload),
   });
 
-  const result = await res.json().catch(() => ({}));
+  const result = (await res.json().catch(() => ({}))) as {
+    reason?: string;
+    error?: string;
+    detail?: string;
+  };
 
   if (!res.ok) {
-    console.error("Booking creation failed:", result);
-    if (result?.reason === "upi_not_configured" || result?.reason === "admin_not_configured") {
+    // The server is not misbehaving here — it is telling us the temple has not
+    // finished setting up. The devotee gets a clear message either way, so
+    // logging it as an error only trips Next's red dev overlay over a
+    // configuration gap. The detail is what actually names the missing
+    // variable, so log that rather than an object the overlay renders as "{}".
+    if (result.reason === "upi_not_configured" || result.reason === "admin_not_configured") {
+      console.warn(
+        `Booking unavailable — ${result.detail ?? result.reason}. ` +
+          "See the System Health panel in /admin."
+      );
       throw new Error(
         "Online booking isn't switched on yet. Please contact the temple office to book this seva."
       );
     }
-    throw new Error(result?.error || "Could not start the booking. Please try again.");
+
+    if (result.reason === "rate_limited") {
+      throw new Error(result.error || "Too many attempts. Please wait a few minutes and try again.");
+    }
+
+    console.error(
+      `Booking creation failed (HTTP ${res.status}): ${result.reason ?? "unknown"} — ${
+        result.error ?? "no message"
+      }`
+    );
+    throw new Error(result.error || "Could not start the booking. Please try again.");
   }
 
-  return result as UpiBookingIntent;
+  return result as unknown as UpiBookingIntent;
 }
 
 export async function getBookings(): Promise<Booking[]> {
   try {
-    const q = query(collection(db, "bookings"), orderBy("createdAt", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+    // Read unordered and sort here rather than with orderBy("createdAt").
+    // Firestore's orderBy silently EXCLUDES documents that lack the field, so
+    // any booking written before createdAt existed — or by a path that forgot
+    // it — simply never appeared in the admin dashboard. A missing timestamp
+    // should make a booking sort last, not make it invisible.
+    const snap = await getDocs(collection(db, "bookings"));
+    const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+
+    return bookings.sort((a, b) => {
+      const at = a.createdAt?.toMillis?.() ?? 0;
+      const bt = b.createdAt?.toMillis?.() ?? 0;
+      if (at !== bt) return bt - at;
+      // Same (or missing) timestamp: fall back to the booking date so the order
+      // is at least stable between loads.
+      return (b.bookingDate || "").localeCompare(a.bookingDate || "");
+    });
   } catch (error) {
     console.error("Firestore Error (getBookings):", error);
     return [];

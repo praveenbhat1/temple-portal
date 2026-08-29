@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { getSevas, getAnnouncements, Seva, Announcement } from "@/lib/firestore";
+import { subscribeSevas, subscribeAnnouncements, Seva, Announcement } from "@/lib/firestore";
 import SevaCard from "@/components/SevaCard";
 import { ArrowRight, MapPin, Clock } from "lucide-react";
 import NotificationButton from "@/components/NotificationButton";
@@ -15,21 +14,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [sevasData, announcementsData] = await Promise.all([
-          getSevas(),
-          getAnnouncements()
-        ]);
-        setSevas(sevasData);
-        setAnnouncements(announcementsData);
-      } catch (error) {
-        console.error("Error fetching homepage data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    // Live subscriptions, not one-shot fetches: an edit in /admin reaches an
+    // already-open page immediately. Both unsubscribe on unmount.
+    const stopSevas = subscribeSevas((data) => {
+      setSevas(data);
+      setLoading(false);
+    });
+    const stopAnnouncements = subscribeAnnouncements(setAnnouncements);
+    return () => {
+      stopSevas();
+      stopAnnouncements();
+    };
   }, []);
 
   const featuredSevas = sevas.filter(s => s.isActive !== false).slice(0, 3);
@@ -97,7 +92,7 @@ export default function Home() {
       </section>
 
       {/* ── INFO BAR ── */}
-      <section className="py-12 md:py-16 bg-ivory border-y border-saffron-100/50">
+      <section className="reveal py-12 md:py-16 bg-ivory border-y border-saffron-100/50">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
           {[
             { icon: <MapPin size={24} />, title: "Kallianpur Main Road, Udupi", sub: "Sacred Abode" },
@@ -120,7 +115,7 @@ export default function Home() {
       <DivineDivider className="mt-8" />
 
       {/* ── FEATURED SEVAS ── */}
-      <section className="py-20 md:py-28 bg-cream">
+      <section className="reveal py-20 md:py-28 bg-cream">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16 md:mb-20">
             <div className="text-center md:text-left">
@@ -147,7 +142,7 @@ export default function Home() {
 
       {/* ── ANNOUNCEMENTS ── */}
       {!loading && latestAnnouncement && (
-        <section className="py-20 md:py-28 bg-ivory">
+        <section className="reveal py-20 md:py-28 bg-ivory">
           <div className="max-w-7xl mx-auto px-6">
             <div className="bg-white border border-saffron-100 rounded-[3rem] md:rounded-[4rem] p-8 md:p-16 lg:p-20 flex flex-col lg:flex-row gap-12 lg:gap-16 items-center shadow-xl shadow-gray-100/50">
               <div className="flex-1 text-center lg:text-left">
@@ -173,7 +168,7 @@ export default function Home() {
       )}
 
       {/* ── CALL TO ACTION ── */}
-      <section className="py-28 md:py-36 relative overflow-hidden bg-foreground text-ivory">
+      <section className="reveal py-28 md:py-36 relative overflow-hidden bg-foreground text-ivory">
         <div className="absolute top-0 left-0 w-full h-full bg-[url('/paper-texture.png')] opacity-10" />
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
           <h2 className="text-4xl md:text-6xl lg:text-7xl font-serif mb-8 md:mb-10 leading-tight">

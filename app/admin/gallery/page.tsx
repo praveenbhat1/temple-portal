@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
-import { getGalleryImages, addGalleryImage, deleteGalleryImage, GalleryImage } from "@/lib/firestore";
+import { subscribeGalleryImages, addGalleryImage, deleteGalleryImage, GalleryImage } from "@/lib/firestore";
 import { Trash2, Upload } from "lucide-react";
 
 export default function AdminGalleryPage() {
@@ -14,23 +14,12 @@ export default function AdminGalleryPage() {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
-  const load = async () => {
-    setLoading(true);
-    setImages(await getGalleryImages());
-    setLoading(false);
-  };
-
-  // Fetch first, then set state, so nothing updates synchronously during the
-  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  // Live, so an upload appears here — and on the public gallery — at once.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const data = await getGalleryImages();
-      if (!alive) return;
+    return subscribeGalleryImages((data) => {
       setImages(data);
       setLoading(false);
-    })();
-    return () => { alive = false; };
+    });
   }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,14 +62,14 @@ export default function AdminGalleryPage() {
         await addGalleryImage(imageUrl);
       }
       
-      await load();
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) { 
       const errorObj = err as Error;
-      setError(errorObj.message || "Upload failed."); 
-      setUploading(false); 
-      await load(); // Load what was successful
+      setError(errorObj.message || "Upload failed.");
+      setUploading(false);
+      // Whatever uploaded before the failure is already on screen — the
+      // subscription delivered it.
     }
   };
 
@@ -91,7 +80,6 @@ export default function AdminGalleryPage() {
     // We will just remove the image reference from our Firestore database so it stops showing on the site.
     try {
       await deleteGalleryImage(img.id!);
-      await load();
     } catch (err) {
       console.error("Delete failed", err);
     }

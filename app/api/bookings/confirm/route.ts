@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb, FieldValue, isAdminConfigured, verifyAdminRequest } from "@/lib/firebaseAdmin";
+import { notifyDevotee } from "@/lib/notify";
 
 /**
  * Settle a pending UPI booking: mark it paid (or rejected) after a temple admin
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   const { id, action } = body;
-  const upiRef = (body.upiRef || "").trim();
+  const upiRef = (body.upiRef || "").trim().slice(0, 60);
 
   if (!id || (action !== "confirm" && action !== "reject")) {
     return NextResponse.json(
@@ -60,14 +61,11 @@ export async function POST(req: Request) {
   try {
     // The transaction is what makes a double-click harmless: the second attempt
     // sees a non-pending status and bails before any counter moves.
-    const sevaIds = await db.runTransaction(async (tx) => {
+    const settled = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new HttpError(404, "That booking no longer exists.", "not_found");
 
-      const data = snap.data() as {
-        paymentStatus?: string;
-        sevas?: { sevaId: string }[];
-      };
+      const data = snap.data() as SettledBooking;
 
       if (data.paymentStatus !== "pending") {
         throw new HttpError(
@@ -84,18 +82,48 @@ export async function POST(req: Request) {
         ...(upiRef ? { upiRef } : {}),
       });
 
-      return action === "confirm" ? (data.sevas || []).map((s) => s.sevaId) : [];
+      return data;
     });
 
     // Counters run after the transaction commits, so they only ever fire for
     // the one caller that actually won the status flip.
-    if (sevaIds.length > 0) await incrementSevaCounts(sevaIds);
+    if (action === "confirm") {
+      const sevaIds = (settled.sevas || []).map((s) => s.sevaId);
+      if (sevaIds.length > 0) await incrementSevaCounts(sevaIds);
+    }
+
+    // Tell the devotee. Best-effort on purpose: the money is already reconciled
+    // and the status is already written, so a messaging outage must not turn
+    // into a 500 that tempts the admin into clicking again.
+    const notified = await notifyDevotee(
+      settled.phone || "",
+      {
+        bookingId: settled.bookingId || "",
+        userName: settled.userName || "Devotee",
+        totalAmount: settled.totalAmount || 0,
+        eventDate: settled.eventDate || "",
+        sevas: settled.sevas || [],
+        upiRef: upiRef || settled.upiRef,
+      },
+      action === "confirm" ? "confirmed" : "rejected"
+    ).catch((err) => {
+      console.error("Devotee notification threw:", err);
+      return { sent: false as const, channel: "none" as const, detail: (err as Error).message };
+    });
+
+    if (!notified.sent && notified.channel !== "none") {
+      console.error(`Could not message ${settled.bookingId}:`, notified.detail);
+    }
 
     return NextResponse.json({
       ok: true,
       id,
       paymentStatus: action === "confirm" ? "success" : "failed",
       confirmedBy: adminEmail,
+      // The dashboard falls back to a click-to-send WhatsApp link when no
+      // provider is configured, so it needs to know which happened.
+      notified: notified.sent,
+      notifyChannel: notified.channel,
     });
   } catch (err) {
     if (err instanceof HttpError) {
@@ -108,6 +136,18 @@ export async function POST(req: Request) {
     );
   }
 }
+
+/** The fields this route reads back off a booking it has just settled. */
+type SettledBooking = {
+  paymentStatus?: string;
+  bookingId?: string;
+  userName?: string;
+  phone?: string;
+  totalAmount?: number;
+  eventDate?: string;
+  upiRef?: string;
+  sevas?: { sevaId: string; name: string; price: number }[];
+};
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string, readonly reason: string) {

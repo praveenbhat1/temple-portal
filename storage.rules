@@ -1,12 +1,32 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      // Anyone can view the gallery images
+
+    // The same /admins collection the Firestore rules and the app UI use, so
+    // adding a temple admin is one console action rather than three.
+    //
+    // The previous rule pinned uploads to a single hardcoded email address that
+    // did not match any account the site actually signs in as, so gallery
+    // uploads failed for every real admin.
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.email != null &&
+             firestore.exists(/databases/(default)/documents/admins/$(request.auth.token.email));
+    }
+
+    match /gallery/{imageId} {
       allow read: if true;
-      // Only the primary admin can upload or delete images
-      allow write: if request.auth != null && 
-                   request.auth.token.email == 'sowkurpraveenbhat@gmail.com';
+      // 8 MB ceiling and an image content type, so a compromised admin session
+      // cannot turn the temple's bucket into file hosting.
+      allow write: if isAdmin() &&
+                   request.resource.size < 8 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

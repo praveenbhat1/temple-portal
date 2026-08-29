@@ -4,12 +4,37 @@
  * Firebase Email/Password sign-in with Firestore admin verification.
  */
 import { useState } from "react";
+import Link from "next/link";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { checkAdminStatus } from "@/lib/auth";
-import { Lock, Mail, Key, AlertCircle } from "lucide-react";
-import Image from "next/image";
+import { Lock, Mail, Key, AlertCircle, Eye, EyeOff } from "lucide-react";
+
+/**
+ * Turn a Firebase auth code into something safe to put on screen.
+ *
+ * The previous version appended the project id and the current hostname to
+ * every failure, which handed an attacker the exact Firebase project to
+ * target — from an unauthenticated page, by typing a wrong password. Codes
+ * that distinguish "no such user" from "wrong password" are also collapsed
+ * into one message, so this page cannot be used to enumerate which addresses
+ * are temple admins.
+ *
+ * The code itself is still logged to the console for whoever is debugging.
+ */
+function loginErrorMessage(code?: string): string {
+  switch (code) {
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a few minutes before trying again.";
+    case "auth/network-request-failed":
+      return "Could not reach the server. Please check your connection and try again.";
+    case "auth/unauthorized-domain":
+      return "This site is not authorised for sign-in. Add its domain in the Firebase console.";
+    default:
+      return "Those credentials were not recognised. Please check and try again.";
+  }
+}
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -17,6 +42,10 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  /** Lets the admin see what they actually typed — this form is used on a
+   *  phone, where a mistyped character is invisible and indistinguishable
+   *  from a genuinely wrong password. */
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +53,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
 
       // Verify if email exists in 'admins' collection
       const isAuthorized = await checkAdminStatus(cred.user.email);
@@ -39,21 +68,13 @@ export default function AdminLoginPage() {
       router.replace("/admin");
     } catch (err: unknown) {
       const errorObj = err as { code?: string };
-      console.error("Login Error:", errorObj);
+      // A wrong password is a normal outcome of a login form, not a fault.
+      // console.error trips Next's red dev overlay and logs the raw
+      // FirebaseError object, which the overlay renders unhelpfully; the code
+      // alone is what anyone debugging actually needs.
+      console.warn("Admin sign-in refused:", errorObj.code ?? "unknown");
       
-      let message = "Failed to sign in. Please check your credentials.";
-      
-      if (errorObj.code === "auth/user-not-found") {
-        message = "User not found. Please create this email in Firebase Console > Authentication.";
-      } else if (errorObj.code === "auth/wrong-password") {
-        message = "Incorrect password. Please try again.";
-      } else if (errorObj.code === "auth/unauthorized-domain") {
-        message = "Domain not authorized. Please add this Vercel URL to Firebase Console > Settings > Authorized Domains.";
-      } else if (errorObj.code === "auth/invalid-credential") {
-        message = "Invalid credentials. If this is a new account, ensure you've set a password in Firebase Console.";
-      }
-      
-      setError(`${message} (Error: ${errorObj.code || 'unknown'}). Project: ${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}. URL: ${typeof window !== 'undefined' ? window.location.hostname : 'unknown'}`);
+      setError(loginErrorMessage(errorObj.code));
       setLoading(false);
     }
   };
@@ -86,7 +107,15 @@ export default function AdminLoginPage() {
                     type="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    // The error is cleared as soon as anything is edited. It
+                    // used to persist across retypes, so a corrected password
+                    // still sat under a red "not recognised" banner and looked
+                    // like it had failed again.
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setError("");
+                    }}
+                    autoComplete="username"
                     placeholder="priest@temple.org"
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all"
                   />
@@ -98,14 +127,36 @@ export default function AdminLoginPage() {
                 <div className="relative">
                   <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/40" size={18} />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError("");
+                    }}
+                    autoComplete="current-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="••••••••"
-                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all"
+                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-12 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-saffron-700 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
                 </div>
+                {/* A pasted credential often carries a trailing space, which is
+                    invisible behind dots and reads as a wrong password. */}
+                {password !== password.trim() && (
+                  <p className="text-[11px] text-amber-700 px-1 pt-1">
+                    There is a space at the start or end of the password — that will be rejected.
+                  </p>
+                )}
               </div>
 
               {error && (
@@ -155,8 +206,11 @@ export default function AdminLoginPage() {
                       router.replace("/admin");
                     }
                   } catch (err: unknown) {
-                    console.error("Google Login Error:", err);
-                    setError("Google Sign-In failed. Please try again.");
+                    console.warn(
+                      "Google sign-in refused:",
+                      (err as { code?: string }).code ?? "unknown"
+                    );
+                    setError(loginErrorMessage((err as { code?: string }).code));
                   } finally {
                     setLoading(false);
                   }
@@ -183,6 +237,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-
-// Added Link component helper
-import Link from "next/link";

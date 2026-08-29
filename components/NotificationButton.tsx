@@ -62,13 +62,19 @@ export default function NotificationButton() {
         setState("unavailable");
         setDetail("This browser doesn't support temple alerts.");
         break;
-      case "no_vapid_key":
+      case "timeout":
         setState("unavailable");
-        setDetail("Temple alerts aren't set up yet. Please check back soon.");
+        setDetail("Your browser's notification service didn't respond. Please try again.");
         break;
       default:
         setState("unavailable");
-        setDetail("Couldn't enable alerts just now. Please try again later.");
+        // Surface the underlying reason when there is one — "try again later"
+        // with no detail is what made this impossible to diagnose.
+        setDetail(
+          result.detail
+            ? `Couldn't enable alerts: ${result.detail}`
+            : "Couldn't enable alerts just now. Please try again later."
+        );
     }
   };
 

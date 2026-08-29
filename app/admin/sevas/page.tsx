@@ -5,7 +5,7 @@
  * Special sevas expose extra date fields; isActive toggle applies to ALL types.
  */
 import { useEffect, useState } from "react";
-import { getSevas, addSeva, updateSeva, deleteSeva, getSevaAvailability, Seva } from "@/lib/firestore";
+import { subscribeSevas, addSeva, updateSeva, deleteSeva, getSevaAvailability, Seva } from "@/lib/firestore";
 import { Pencil, Trash2, Plus, X, Clock } from "lucide-react";
 
 type FormState = Omit<Seva, "id">;
@@ -54,25 +54,13 @@ export default function AdminSevasPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    // Force fresh fetch by adding a small delay or ensuring no cache
-    const freshSevas = await getSevas();
-    setSevas(freshSevas);
-    setLoading(false);
-  };
-
-  // Fetch first, then set state, so nothing updates synchronously during the
-  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  // A live subscription, so the list reflects a save the moment Firestore has
+  // it — including an edit made by another admin on another device.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const freshSevas = await getSevas();
-      if (!alive) return;
-      setSevas(freshSevas);
+    return subscribeSevas((data) => {
+      setSevas(data);
       setLoading(false);
-    })();
-    return () => { alive = false; };
+    });
   }, []);
 
   const openAdd = () => { setForm(EMPTY); setEditId(null); setShowForm(true); setError(""); };
@@ -97,8 +85,16 @@ export default function AdminSevasPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.description || form.price <= 0) {
-      setError("Please fill all required fields with valid values.");
+    // Description is deliberately optional. Most sevas on the temple's printed
+    // board have no description at all, and requiring one made every existing
+    // seva un-editable: opening the form on one blocked the save with "Please
+    // fill in this field" over a box the temple never filled in to begin with.
+    if (!form.name.trim()) {
+      setError("Please enter a seva name.");
+      return;
+    }
+    if (!(form.price > 0)) {
+      setError("Please enter a price greater than zero.");
       return;
     }
     if (form.type === "special") {
@@ -121,8 +117,7 @@ export default function AdminSevasPage() {
       }
       setShowForm(false);
       setEditId(null);
-      // Small artificial delay to let Firestore sync
-      setTimeout(() => { load(); }, 500);
+      // No manual reload: the subscription above delivers the saved document.
     } catch (err) {
       const errorObj = err as Error;
       setError(errorObj.message || "Failed to save seva.");
@@ -134,7 +129,6 @@ export default function AdminSevasPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     await deleteSeva(id);
-    await load();
   };
 
   const isSpecial = form.type === "special";
@@ -155,21 +149,49 @@ export default function AdminSevasPage() {
       </div>
 
       {/* ── Modal Form ── */}
+      {/*
+        A bottom sheet on phones, a centred dialog from `sm` up. Most of the
+        temple's admin work happens on a phone, and a centred card with `p-8`
+        left the action buttons below the fold behind the on-screen keyboard.
+        As a sheet the header and the Save button stay pinned and only the
+        fields scroll.
+      */}
       {showForm && (
-        <div className="fixed inset-0 z-[150] bg-black/20 backdrop-blur-md flex items-start justify-center p-4 pt-10 md:pt-20 overflow-y-auto">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg p-8 relative animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-saffron-50 rounded-2xl flex items-center justify-center text-saffron-600">
-                  <Plus size={20} />
-                </div>
-                <h2 className="text-2xl font-serif text-gray-900">{editId ? "Edit Seva" : "Add New Seva"}</h2>
-              </div>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-50 rounded-full transition-colors"><X size={24} /></button>
+        <div
+          className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+          onClick={() => setShowForm(false)}
+        >
+          <div
+            /* Stops a click inside the sheet closing it via the backdrop. */
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-lg rounded-t-[1.75rem] sm:rounded-[2rem] shadow-2xl flex flex-col max-h-[92dvh] sm:max-h-[88vh]"
+          >
+            {/* Grab handle — the affordance that says "this sheet drags/closes". */}
+            <div className="sm:hidden pt-3 pb-1 flex justify-center shrink-0">
+              <span className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="space-y-6">
+            <div className="flex items-center justify-between px-5 sm:px-8 pt-4 sm:pt-7 pb-4 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 bg-saffron-50 rounded-xl flex items-center justify-center text-saffron-600 shrink-0">
+                  {editId ? <Pencil size={17} /> : <Plus size={18} />}
+                </div>
+                <h2 className="text-lg sm:text-xl font-serif text-gray-900 truncate">
+                  {editId ? "Edit Seva" : "Add New Seva"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                aria-label="Close"
+                className="text-gray-400 hover:text-gray-700 p-2 -mr-2 hover:bg-gray-50 rounded-full transition-colors shrink-0"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+              <div className="overflow-y-auto px-5 sm:px-8 py-5 space-y-6 flex-1">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Seva Name *</label>
                   <input
@@ -182,12 +204,14 @@ export default function AdminSevasPage() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Description *</label>
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">
+                    Description <span className="text-gray-300 normal-case tracking-normal">— optional</span>
+                  </label>
                   <textarea
-                    required rows={2}
+                    rows={2}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Brief description of the seva..."
+                    placeholder="Shown to devotees under the seva name (optional)"
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all resize-none"
                   />
                 </div>
@@ -229,9 +253,7 @@ export default function AdminSevasPage() {
                     <option value="special">✨ Special Seva</option>
                   </select>
                 </div>
-              </div>
-
-              {/* Special Configuration Section */}
+                {/* Special Configuration Section */}
               {isSpecial && (
                 <div className="bg-saffron-50/50 border border-saffron-100 rounded-[2rem] p-6 space-y-6">
                   <div className="flex items-center gap-2 mb-2">
@@ -294,19 +316,34 @@ export default function AdminSevasPage() {
                 </button>
               </div>
 
-              {error && (
-                <div className="bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold px-5 py-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                  {error}
-                </div>
-              )}
+                {error && (
+                  <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-bold px-4 py-3 rounded-xl flex items-center gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+                    {error}
+                  </div>
+                )}
+              </div>
 
-              <div className="flex gap-4 pt-4 border-t border-gray-50">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-gray-50 text-gray-500 hover:bg-gray-100 font-bold py-4 rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all">
+              {/*
+                Outside the scrolling body, so Save is always reachable — on a
+                phone it previously sat below the fold, behind the keyboard.
+                pb-[env(safe-area-inset-bottom)] keeps it clear of the iOS
+                home indicator.
+              */}
+              <div className="flex gap-3 px-5 sm:px-8 py-4 border-t border-gray-100 bg-white shrink-0 rounded-b-[1.75rem] sm:rounded-b-[2rem] pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="flex-1 bg-gray-50 text-gray-600 hover:bg-gray-100 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-[0.15em] transition-colors"
+                >
                   Discard
                 </button>
-                <button type="submit" disabled={saving} className="flex-1 bg-foreground text-ivory hover:bg-saffron-700 disabled:opacity-60 font-bold py-4 rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all shadow-lg shadow-gray-200">
-                  {saving ? "Saving…" : editId ? "Commit Changes" : "Create Seva"}
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-[1.4] bg-foreground text-ivory hover:bg-saffron-700 disabled:opacity-60 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-[0.15em] transition-colors"
+                >
+                  {saving ? "Saving…" : editId ? "Save Changes" : "Create Seva"}
                 </button>
               </div>
             </form>

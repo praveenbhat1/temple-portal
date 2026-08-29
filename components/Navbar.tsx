@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
 import { Menu, X, LayoutDashboard, ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -91,6 +90,14 @@ export default function Navbar() {
     };
   }, []);
 
+  /**
+   * The admin portal has its own chrome — a sidebar, its own header, its own
+   * background. Rendering the public navbar over it forced the dashboard to
+   * push everything down with a pt-48 spacer and pin its sidebar below a bar
+   * that had nothing to do with it. /admin gets the whole viewport instead.
+   */
+  const isAdminRoute = pathname?.startsWith("/admin") ?? false;
+
   // Lock body scroll when mobile menu is open
   useEffect(() => {
     if (isOpen) {
@@ -103,6 +110,7 @@ export default function Navbar() {
     };
   }, [isOpen]);
 
+  if (isAdminRoute) return null;
 
   return (
     <>

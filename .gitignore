@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template, which documents what every deployment needs and
+# holds no values. Without it a fresh clone has no way to know that a missing
+# TEMPLE_UPI_ID is what took bookings offline.
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +43,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local scratch scripts. These are throwaway files that tend to accumulate
+# hardcoded credentials — scratch/test_razorpay.js held a live Razorpay
+# key_secret in plain text. Keep the whole directory out of the repository.
+scratch/
+
+# Editor workspace files are personal, not project configuration.
+*.code-workspace

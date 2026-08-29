@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getAnnouncements, Announcement } from "@/lib/firestore";
+import { subscribeAnnouncements, Announcement } from "@/lib/firestore";
 import AnnouncementCard from "@/components/AnnouncementCard";
-import Image from "next/image";
 import { Bell } from "lucide-react";
 
 export default function AnnouncementsPage() {
@@ -10,17 +9,11 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const data = await getAnnouncements();
-        setAnnouncements(data);
-      } catch (error) {
-        console.error("Error fetching announcements:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    // Live: a new announcement shows up for anyone with this page open.
+    return subscribeAnnouncements((data) => {
+      setAnnouncements(data);
+      setLoading(false);
+    });
   }, []);
 
 

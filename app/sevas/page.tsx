@@ -2,20 +2,19 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  getSevas,
+  subscribeSevas,
   createUpiBooking,
   Seva,
   Booking,
   UpiBookingIntent,
 } from "@/lib/firestore";
-import { Calendar, User, Phone, CheckCircle2, X, ShoppingBag, Download, CreditCard, Mail, Heart, ArrowRight, Smartphone, Clock3, Copy, Check } from "lucide-react";
+import { Calendar, User, Phone, CheckCircle2, X, ShoppingBag, Download, CreditCard, Mail, Heart, ArrowRight, Smartphone, Clock3 } from "lucide-react";
 import SevaBoard from "@/components/SevaBoard";
-import BankTransferDetails from "@/components/BankTransferDetails";
-import { UPI_APPS, toAppLink } from "@/lib/upiApps";
+import UpiPayStep from "@/components/UpiPayStep";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
-import { generatePremiumReceipt } from "@/lib/receipt";
+import { generatePremiumReceipt, generateBookingAcknowledgement } from "@/lib/receipt";
 
 /** Shape of the payload Razorpay hands back on a failed payment. */
 type RazorpayFailure = { error?: { description?: string; reason?: string; code?: string } };
@@ -104,7 +103,7 @@ interface BookingFormProps {
   /** Today's date (YYYY-MM-DD), captured when the modal was opened. */
   defaultDate: string;
   /** Manual UPI flow — the devotee says they have paid, awaiting confirmation. */
-  onAwaitingConfirmation: (intent: UpiBookingIntent, eventDate: string) => void;
+  onAwaitingConfirmation: (booking: AwaitingBooking) => void;
   onSuccess: (booking: {
     bookingId: string;
     userName: string;
@@ -333,7 +332,14 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
     return (
       <UpiPayStep
         intent={upiIntent}
-        onPaid={() => onAwaitingConfirmation(upiIntent, form.eventDate)}
+        onPaid={() =>
+          onAwaitingConfirmation({
+            intent: upiIntent,
+            userName: form.userName,
+            phone: normalizePhone(form.phone),
+            eventDate: form.eventDate,
+          })
+        }
       />
     );
   }
@@ -459,148 +465,9 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
   );
 }
 
-// ─── UPI payment step ─────────────────────────────────────────────────────────
-
-/**
- * Show the devotee how to pay, then let them tell us they have.
- *
- * "I have completed the payment" is only a hint for the temple office — it
- * writes nothing and proves nothing. The booking stays pending until an admin
- * matches the credit in the temple's account against the reference shown here.
- */
-function UpiPayStep({ intent, onPaid }: { intent: UpiBookingIntent; onPaid: () => void }) {
-  const [copied, setCopied] = useState(false);
-
-  const copyReference = async () => {
-    try {
-      await navigator.clipboard.writeText(intent.bookingId);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard blocked — the reference is on screen to copy by hand */
-    }
-  };
-
-  return (
-    <div className="space-y-8">
-    <div className="flex flex-col lg:grid lg:grid-cols-2 gap-10">
-      {/*
-        Two ways to pay, chosen by pointer type rather than screen width — a
-        phone gets the deep links, a mouse gets the QR.
-
-        This is the whole point of the split: on a phone the QR is useless,
-        because scanning it would need a second device. The pointer media query
-        is CSS, so the right half is correct on first paint with no hydration
-        flash and no user-agent sniffing.
-      */}
-      <div className="bg-saffron-50/50 rounded-3xl p-6 md:p-8 border border-saffron-100 text-center">
-        <p className="text-3xl font-serif font-bold text-saffron-700 mb-6">
-          ₹{intent.totalAmount.toLocaleString("en-IN")}
-        </p>
-
-        {/* ── Touch devices: open a UPI app on this phone ── */}
-        <div className="hidden [@media(pointer:coarse)]:block">
-          <a
-            href={intent.upiUri}
-            className="w-full bg-saffron-700 hover:bg-saffron-800 text-ivory font-bold py-5 rounded-2xl transition-all shadow-lg shadow-saffron-700/20 text-sm flex items-center justify-center gap-2"
-          >
-            <Smartphone size={18} />
-            Pay ₹{intent.totalAmount.toLocaleString("en-IN")} Now
-          </a>
-
-          <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mt-6 mb-3">
-            or open directly in
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {UPI_APPS.map((app) => (
-              <a
-                key={app.id}
-                href={toAppLink(intent.upiUri, app)}
-                className="bg-white border border-saffron-100 text-gray-700 text-[11px] font-bold py-3 rounded-xl hover:border-saffron-300 hover:text-saffron-700 transition-colors"
-              >
-                {app.name}
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Mouse/desktop: nothing here can launch an app, so scan instead ── */}
-        <div className="[@media(pointer:coarse)]:hidden">
-          <span className="text-[10px] uppercase tracking-[0.25em] font-bold text-saffron-600 block mb-4">
-            Scan to Pay
-          </span>
-
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={intent.qrDataUrl}
-            alt={`UPI QR code for ${intent.bookingId}`}
-            width={220}
-            height={220}
-            className="mx-auto rounded-2xl border border-saffron-100 bg-white p-2 shadow-sm"
-          />
-
-          <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-            Scan with GPay, PhonePe, Paytm or any UPI app on your phone.
-          </p>
-        </div>
-      </div>
-
-      {/* Reference + what happens next */}
-      <div className="space-y-6">
-        <div>
-          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">
-            Your Booking Reference
-          </label>
-          <button
-            type="button"
-            onClick={copyReference}
-            className="w-full bg-white border border-saffron-100 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 hover:border-saffron-300 transition-colors shadow-sm group"
-          >
-            <span className="font-mono font-bold tracking-widest text-saffron-700 text-lg">
-              {intent.bookingId}
-            </span>
-            <span className="text-gray-400 group-hover:text-saffron-600 transition-colors">
-              {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
-            </span>
-          </button>
-          <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
-            This reference travels with your payment, so the temple can match it to your seva.
-            Please keep it safe.
-          </p>
-        </div>
-
-        <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-5 space-y-3">
-          <p className="text-xs font-bold text-amber-900 flex items-center gap-2">
-            <Clock3 size={14} />
-            Confirmation is not instant
-          </p>
-          <p className="text-[11px] text-amber-800/80 leading-relaxed">
-            The temple office checks payments by hand and will confirm your booking shortly.
-            You can follow its status any time using the reference above.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onPaid}
-          className="w-full bg-saffron-700 hover:bg-saffron-800 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3"
-        >
-          <CheckCircle2 size={18} />
-          I have completed the payment
-        </button>
-      </div>
-    </div>
-
-    {/* Fallback for devotees who don't use UPI. The same "I have completed the
-        payment" button above applies — either way an admin confirms it. */}
-    <BankTransferDetails bookingId={intent.bookingId} />
-    </div>
-  );
-}
-
 // ─── Modal wrapper ─────────────────────────────────────────────────────────────
 
-function BookingModal({ selectedSevas, defaultDate, onClose, onAwaitingConfirmation, onSuccess }: { selectedSevas: Seva[], defaultDate: string, onClose: () => void, onAwaitingConfirmation: (intent: UpiBookingIntent, eventDate: string) => void, onSuccess: (b: {
+function BookingModal({ selectedSevas, defaultDate, onClose, onAwaitingConfirmation, onSuccess }: { selectedSevas: Seva[], defaultDate: string, onClose: () => void, onAwaitingConfirmation: (booking: AwaitingBooking) => void, onSuccess: (b: {
     bookingId: string;
     userName: string;
     phone: string;
@@ -682,20 +549,44 @@ function SuccessView({ booking, onClose }: { booking: Booking, onClose: () => vo
 
 // ─── Awaiting-confirmation Component ──────────────────────────────────────────
 
+/** What the awaiting screen needs beyond the payment intent itself. */
+export interface AwaitingBooking {
+  intent: UpiBookingIntent;
+  userName: string;
+  phone: string;
+  eventDate: string;
+}
+
 /**
  * The end of the manual UPI flow.
  *
  * Deliberately does NOT offer a receipt: no payment has been verified yet, and
  * handing over a receipt for money the temple has not confirmed receiving would
- * be a lie the devotee could reasonably act on.
+ * be a lie the devotee could reasonably act on. What it offers instead is an
+ * acknowledgement PDF that says so on its face — the devotee still gets
+ * something to keep, without it being able to pass for proof of payment.
  */
 function AwaitingConfirmationView({
-  intent,
+  booking,
   onClose,
 }: {
-  intent: UpiBookingIntent;
+  booking: AwaitingBooking;
   onClose: () => void;
 }) {
+  const { intent } = booking;
+
+  const downloadAcknowledgement = () => {
+    generateBookingAcknowledgement({
+      bookingId: intent.bookingId,
+      userName: booking.userName,
+      phone: booking.phone,
+      sevas: intent.sevas,
+      totalAmount: intent.totalAmount,
+      eventDate: booking.eventDate,
+      bookingDate: todayISO(),
+    }).save(`Booking_${intent.bookingId}.pdf`);
+  };
+
   return (
     <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
       <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-xl p-8 md:p-12 text-center relative my-auto">
@@ -703,13 +594,14 @@ function AwaitingConfirmationView({
           <Clock3 size={38} />
         </div>
 
-        <h2 className="text-3xl font-serif text-gray-900 mb-4">Awaiting Confirmation</h2>
+        <h2 className="text-3xl font-serif text-gray-900 mb-4">Booking Recorded</h2>
         <p className="text-gray-500 font-sans leading-relaxed mb-8">
-          Thank you. Your seva booking has been recorded and the temple office will confirm it
-          once your payment is verified.
+          Thank you, {booking.userName.split(" ")[0]}. The temple office will verify your payment
+          and confirm this seva shortly — you&apos;ll get a message on{" "}
+          <span className="text-gray-700 font-medium">{booking.phone}</span> once it&apos;s done.
         </p>
 
-        <div className="bg-saffron-50/60 border border-saffron-100 rounded-2xl px-6 py-5 mb-8">
+        <div className="bg-saffron-50/60 border border-saffron-100 rounded-2xl px-6 py-5 mb-4">
           <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">
             Booking Reference
           </p>
@@ -717,6 +609,14 @@ function AwaitingConfirmationView({
             {intent.bookingId}
           </p>
         </div>
+
+        <button
+          onClick={downloadAcknowledgement}
+          className="text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-saffron-700 transition-colors inline-flex items-center gap-2 mb-8"
+        >
+          <Download size={14} />
+          Download booking slip
+        </button>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
@@ -749,13 +649,22 @@ function SevasContent() {
   const [bookingDefaultDate, setBookingDefaultDate] = useState<string | null>(null);
   const [completedBooking, setCompletedBooking] = useState<Booking | null>(null);
   /** Manual UPI flow — booking recorded, payment not yet verified. */
-  const [awaitingBooking, setAwaitingBooking] = useState<UpiBookingIntent | null>(null);
+  const [awaitingBooking, setAwaitingBooking] = useState<AwaitingBooking | null>(null);
 
   useEffect(() => {
-    getSevas().then((data) => {
+    // Live, so a price or availability change made in /admin is reflected on
+    // this page immediately — including for a devotee who already has it open
+    // with sevas in their cart.
+    let firstLoad = true;
+    return subscribeSevas((data) => {
       setExtraSevas(data);
-      if (preselect && data.some(s => s.id === preselect)) {
-        setSelectedIds([preselect]);
+      // ?book=<id> preselects a seva, but only on the first delivery — doing
+      // it on every update would re-select something the devotee removed.
+      if (firstLoad) {
+        firstLoad = false;
+        if (preselect && data.some((s) => s.id === preselect)) {
+          setSelectedIds([preselect]);
+        }
       }
     });
   }, [preselect]);
@@ -768,14 +677,24 @@ function SevasContent() {
     );
   };
 
-  // Merge static sevas with dynamic sevas for calculation, ensuring uniqueness by ID
-  const rawAll = [
-    ...ALL_SEVAS.map(s => ({ id: s.id, name: s.nameEn, price: s.price })),
-    ...extraSevas.map(s => ({ id: s.id!, name: s.name, price: s.price }))
-  ];
-  
-  // Use a Map to keep only one item per ID (last one wins, which is usually the dynamic one)
-  const allAvailable = Array.from(new Map(rawAll.map(s => [s.id, s])).values());
+  /**
+   * The priced list the cart totals against.
+   *
+   * Firestore entries are appended after the static ones and the Map keeps the
+   * LAST value per id, so a seva edited in /admin wins — the same precedence
+   * SevaBoard renders with and /api/bookings/create charges with. All three
+   * must agree, or the devotee is quoted one price and charged another.
+   */
+  const allAvailable = Array.from(
+    new Map(
+      [
+        ...ALL_SEVAS.map(s => ({ id: s.id, name: s.nameEn, price: s.price })),
+        ...extraSevas
+          .filter(s => s.id && s.isActive !== false)
+          .map(s => ({ id: s.id!, name: s.name, price: s.price })),
+      ].map(s => [s.id, s])
+    ).values()
+  );
 
   const selectedSevas = allAvailable.filter(s => selectedIds.includes(s.id));
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
@@ -785,20 +704,18 @@ function SevasContent() {
    * touched here — that happens when an admin confirms the payment, so an
    * unpaid booking can never consume a limited slot.
    */
-  const handleAwaitingConfirmation = (intent: UpiBookingIntent) => {
+  const handleAwaitingConfirmation = (booking: AwaitingBooking) => {
     setBookingDefaultDate(null);
-    setAwaitingBooking(intent);
+    setAwaitingBooking(booking);
     setSelectedIds([]);
   };
 
-  const handleBookingSuccess = async (b: Booking) => {
+  const handleBookingSuccess = (b: Booking) => {
     setBookingDefaultDate(null);
     setCompletedBooking(b);
     setSelectedIds([]);
-
-    // Booking counts are incremented server-side in /api/razorpay/verify (the
-    // client is not trusted to do it), so just re-read the fresh numbers.
-    setExtraSevas(await getSevas());
+    // Booking counts are incremented server-side; the live subscription above
+    // delivers the new numbers on its own, so there is nothing to re-fetch.
   };
 
   return (
@@ -898,7 +815,7 @@ function SevasContent() {
       {/* Awaiting Confirmation View (manual UPI) */}
       {awaitingBooking && (
         <AwaitingConfirmationView
-          intent={awaitingBooking}
+          booking={awaitingBooking}
           onClose={() => setAwaitingBooking(null)}
         />
       )}

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Image from "next/image";
-import { getGalleryImages, GalleryImage } from "@/lib/firestore";
+import { subscribeGalleryImages, GalleryImage } from "@/lib/firestore";
 import { Camera, Download } from "lucide-react";
 
 export default function GalleryPage() {
@@ -9,17 +8,11 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const data = await getGalleryImages();
-        setImages(data);
-      } catch (error) {
-        console.error("Error fetching gallery:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    // Live: a photo uploaded in /admin/gallery appears here without a reload.
+    return subscribeGalleryImages((data) => {
+      setImages(data);
+      setLoading(false);
+    });
   }, []);
 
   const handleDownload = async (imageUrl: string, id: string) => {

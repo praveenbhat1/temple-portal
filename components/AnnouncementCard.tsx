@@ -3,7 +3,6 @@ import React from 'react';
 import { Announcement } from "@/lib/firestore";
 import { Timestamp } from "firebase/firestore";
 import { Bell } from "lucide-react";
-import Image from "next/image";
 
 interface Props {
   announcement: Announcement;

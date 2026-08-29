@@ -50,3 +50,31 @@ export function buildUpiUri(opts: { amount: number; bookingId: string }): string
   const query = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
   return `upi://pay?${query}`;
 }
+
+/**
+ * Build an open-amount `upi://pay` link for donations.
+ *
+ * Unlike a seva booking there is no amount and no reference: the devotee
+ * decides how much to give, and their UPI app asks them for it. Same encoding
+ * caveat as buildUpiUri — spaces must not become `+`.
+ */
+export function buildDonationUpiUri(): string {
+  const vpa = (process.env.TEMPLE_UPI_ID || "").trim();
+  if (!vpa) throw new Error("TEMPLE_UPI_ID is not set");
+
+  const payeeName = (process.env.TEMPLE_UPI_NAME || DEFAULT_PAYEE_NAME).trim();
+
+  const params: [string, string][] = [
+    ["pa", vpa],
+    ["pn", payeeName],
+    ["cu", "INR"],
+    ["tn", "Temple Donation"],
+  ];
+
+  return `upi://pay?${params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")}`;
+}
+
+/** The temple's UPI id, for display. Empty string when not configured. */
+export function templeUpiId(): string {
+  return (process.env.TEMPLE_UPI_ID || "").trim();
+}

@@ -1,8 +1,8 @@
 "use client";
 import React from 'react';
-import Image from 'next/image';
 import { SEVA_DATA, SevaGroup, ALL_SEVAS } from "@/lib/sevaData";
 import { Seva, getSevaAvailability } from "@/lib/firestore";
+import { TEMPLE_BANK, TEMPLE_BANK_LINE } from "@/lib/templeBank";
 
 interface Props {
   selectedIds: string[];
@@ -11,15 +11,57 @@ interface Props {
 }
 
 export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) {
-  // Filter out extraSevas that are already in the static SEVA_DATA to avoid repeats
-  const uniqueExtraSevas = extraSevas.filter(es => 
-    !ALL_SEVAS.some(as => as.id === es.id || as.nameEn === es.name)
+  /**
+   * Firestore is the source of truth; SEVA_DATA is the printed board it was
+   * seeded from and now serves only as a fallback for entries that have no
+   * Firestore document.
+   *
+   * This used to be the other way round by accident. Any Firestore seva whose
+   * id or name matched a static one was DISCARDED, so the hardcoded price was
+   * always what devotees saw. Editing a price in /admin appeared to do
+   * nothing — and worse, it silently did something: the booking total and
+   * /api/bookings/create both read Firestore, so the board advertised the old
+   * price while the devotee was charged the new one.
+   */
+  const liveById = new Map(
+    extraSevas.filter((s) => s.id).map((s) => [s.id as string, s])
+  );
+
+  /** Static board with live Firestore values laid over it, keyed by id. */
+  const mergedGroups: SevaGroup[] = SEVA_DATA.map((group) => ({
+    ...group,
+    items: group.items
+      // A seva switched off in the admin disappears from the board.
+      .filter((item) => liveById.get(item.id)?.isActive !== false)
+      .map((item) => {
+        const live = liveById.get(item.id);
+        if (!live) return item;
+        return {
+          ...item,
+          nameEn: live.name?.trim() || item.nameEn,
+          price: Number.isFinite(live.price) ? live.price : item.price,
+          // Description is optional in the admin, so an empty one must not
+          // wipe the note the printed board carries.
+          noteEn: live.description?.trim() || item.noteEn,
+        };
+      }),
+  })).filter((group) => group.items.length > 0);
+
+  /** Sevas that exist only in Firestore — genuinely new offerings. */
+  const staticIds = new Set(ALL_SEVAS.map((s) => s.id));
+  const staticNames = new Set(ALL_SEVAS.map((s) => s.nameEn));
+  const brandNewSevas = extraSevas.filter(
+    (s) =>
+      s.id &&
+      !staticIds.has(s.id) &&
+      !staticNames.has(s.name) &&
+      s.isActive !== false
   );
 
   const dynamicGroup: SevaGroup = {
     titleEn: "SPECIAL OFFERINGS",
     titleKn: "ವಿಶೇಷ ಕೊಡುಗೆಗಳು",
-    items: uniqueExtraSevas.map(s => ({
+    items: brandNewSevas.map(s => ({
       id: s.id!,
       nameEn: s.name,
       nameKn: s.name, 
@@ -28,10 +70,9 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
     }))
   };
 
-  // Follow the image order: Dynamic (new) first, then SEVA_DATA (which now has Regular first)
-  const allGroups = uniqueExtraSevas.length > 0 ? [dynamicGroup, ...SEVA_DATA] : SEVA_DATA;
+  const allGroups = brandNewSevas.length > 0 ? [dynamicGroup, ...mergedGroups] : mergedGroups;
 
-  // Create a combined list for lookup (for availability checks)
+  // Availability (sold out / closed / upcoming) for anything Firestore knows.
   const dynamicItemsLookup = extraSevas.map(s => ({
     ...s,
     avail: getSevaAvailability(s)
@@ -182,9 +223,9 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
           <div className="space-y-2">
             <h4 className="font-bold text-gray-700 uppercase tracking-wider">Bank Account Details:</h4>
             <p>
-              <span className="font-medium text-gray-600">Account Name:</span> Sunkadakatte Sri Vinayaka Temple <br />
-              <span className="font-medium text-gray-600">Account No.:</span> 01442200022013 <br />
-              <span className="font-medium text-gray-600">Bank:</span> Canara Bank, Kallianpur II (IFSC: CNRB0010144)
+              <span className="font-medium text-gray-600">Account Name:</span> {TEMPLE_BANK.accountName} <br />
+              <span className="font-medium text-gray-600">Account No.:</span> {TEMPLE_BANK.accountNumber} <br />
+              <span className="font-medium text-gray-600">Bank:</span> {TEMPLE_BANK_LINE} (IFSC: {TEMPLE_BANK.ifsc})
             </p>
           </div>
           <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-xl">

@@ -9,11 +9,24 @@ service cloud.firestore {
     // The doc id must be the email, because that is the only shape a security
     // rule can look up directly. lib/firestore.ts reads it the same way, so the
     // client UI and these rules can never disagree.
+    //
+    // email_verified is deliberately NOT required. Temple admins are created by
+    // hand in the Firebase console with a password, and console-created accounts
+    // are unverified — requiring it locked every one of them out of every write
+    // while the UI still showed them as signed in. Membership of /admins is the
+    // gate, and only the Firebase console can grant it (see the /admins rules).
     function isAdmin() {
       return request.auth != null &&
              request.auth.token.email != null &&
-             request.auth.token.email_verified == true &&
              exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // Fields a devotee's booking must never carry a client-side edit to.
+    // Used to keep the admin UI honest even though the real writes go through
+    // the Admin SDK, which bypasses these rules entirely.
+    function unchanged(field) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == resource.data[field];
     }
 
     match /sevas/{document} {
@@ -29,11 +42,25 @@ service cloud.firestore {
     }
 
     match /bookings/{document=**} {
-      // Bookings are created ONLY by the server, after a Razorpay signature
-      // has been verified (/api/razorpay/verify). The Admin SDK bypasses these
-      // rules, so denying every client write here is what stops a visitor from
-      // forging a paid booking.
-      allow create, update, delete: if isAdmin();
+      // Bookings are created ONLY by the server:
+      //   • /api/bookings/create  — manual UPI flow, written as `pending`
+      //   • /api/razorpay/verify  — after a gateway signature has been verified
+      // The Admin SDK bypasses these rules, so denying every client write here
+      // is what stops a visitor from forging a paid booking.
+      allow create: if false;
+      allow delete: if false;
+
+      // An admin may annotate a booking from the dashboard (internal notes,
+      // and nothing else). Money-bearing fields stay server-owned: settling a
+      // payment goes through /api/bookings/confirm so it is transactional and
+      // attributable, never a raw client write.
+      allow update: if isAdmin() &&
+                    unchanged('paymentStatus') &&
+                    unchanged('totalAmount') &&
+                    unchanged('sevas') &&
+                    unchanged('bookingId') &&
+                    unchanged('confirmedBy') &&
+                    unchanged('phone');
 
       // Devotees look their booking up through /api/bookings/lookup, which also
       // runs server-side. Direct client reads are admin-only.
@@ -44,9 +71,12 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
-    match /admins/{document=**} {
-      // Readable so the signed-in admin UI can confirm its own status.
-      allow read: if true;
+    match /admins/{email} {
+      // A signed-in user may read ONLY their own admin record, which is all the
+      // UI needs to decide whether to show the dashboard. The previous rule was
+      // `allow read: if true`, which published the temple's full list of
+      // administrator email addresses to anyone who opened the site.
+      allow read: if request.auth != null && request.auth.token.email == email;
       allow write: if false; // Manage from the Firebase console only.
     }
 
@@ -58,6 +88,12 @@ service cloud.firestore {
     match /fcmTokens/{token} {
       // Written only by /api/fcm/subscribe via the Admin SDK. Keeping this shut
       // stops anyone from harvesting or spamming the subscriber list.
+      allow read, write: if false;
+    }
+
+    // Anything not matched above is denied. Spelling it out means a collection
+    // added later fails closed instead of inheriting someone's open rule.
+    match /{document=**} {
       allow read, write: if false;
     }
   }

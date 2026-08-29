@@ -1,28 +1,30 @@
 "use client";
 /**
- * Auth helpers for admin access control.
- * Primary source of truth is the 'admins' collection in Firestore.
+ * Admin access control for the browser.
+ *
+ * This is a UI gate only — it decides whether to render the dashboard, nothing
+ * more. Every privileged action is authorised again on the other side:
+ * firestore.rules re-checks /admins for direct writes, and the API routes
+ * re-check it against a verified Firebase ID token in verifyAdminRequest().
+ * So a devotee who forces this to return true gains a dashboard shell that
+ * cannot read or write a single thing.
+ *
+ * The single source of truth is the `admins` collection, keyed by email.
+ * Membership is granted only from the Firebase console — the security rules
+ * deny every client write to it.
  */
 import { verifyAdmin } from "./firestore";
 
 /**
- * Check if a given email is an authorised admin via Firestore.
+ * Is this email a temple admin?
+ *
+ * Deliberately has no fallback list. It previously trusted
+ * NEXT_PUBLIC_ADMIN_EMAILS — which ships to every visitor's browser and is
+ * trivially editable there — and hardcoded one personal address on top of that.
+ * Both admitted people the security rules would then reject on every write,
+ * so the dashboard loaded and then silently failed at each save.
  */
 export async function checkAdminStatus(email: string | null | undefined): Promise<boolean> {
   if (!email) return false;
-  
-  // 1. Check Firestore 'admins' collection
-  const isAuthorized = await verifyAdmin(email);
-  if (isAuthorized) return true;
-
-  // 2. Fallback to Environment Variables (for initial setup)
-  const envAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim())
-    .filter(Boolean);
-    
-  // Add hardcoded admin for user convenience
-  if (email === "praveenbhat46@gmail.com") return true;
-    
-  return envAdmins.includes(email);
+  return verifyAdmin(email);
 }

@@ -1,5 +1,4 @@
 import { MapPin, Phone, Mail, Clock, MessageCircle } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
 export default function ContactPage() {
@@ -94,7 +93,7 @@ export default function ContactPage() {
         {/* Embedded Google Map */}
         <div className="h-full min-h-[400px] md:min-h-[600px] bg-white border border-saffron-100 rounded-[2.5rem] overflow-hidden relative shadow-lg group">
           <iframe 
-            src="https://maps.google.com/maps?q=Sunkadakatte%20Sri%20Vinayaka%20Temple%20Mudutonce&t=&z=14&ie=UTF8&iwloc=&output=embed" 
+            src="https://maps.google.com/maps?q=Sri%20Vinayaka%20Temple%20Kallianpur%20Main%20Road%20Santhekatte%20Udupi&t=&z=15&ie=UTF8&iwloc=&output=embed" 
             width="100%" 
             height="100%" 
             style={{ border: 0, position: 'absolute', top: 0, left: 0 }} 

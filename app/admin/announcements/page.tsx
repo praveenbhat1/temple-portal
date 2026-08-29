@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  getAnnouncements,
+  subscribeAnnouncements,
   addAnnouncement,
   updateAnnouncement,
   deleteAnnouncement,
@@ -70,23 +70,12 @@ export default function AdminAnnouncementsPage() {
   const [notify, setNotify] = useState(true);
   const [notifyStatus, setNotifyStatus] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    setItems(await getAnnouncements());
-    setLoading(false);
-  };
-
-  // Fetch first, then set state, so nothing updates synchronously during the
-  // effect; the `alive` flag stops a late response writing to an unmounted page.
+  // Live, so a post appears here and on the public site straight away.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const data = await getAnnouncements();
-      if (!alive) return;
+    return subscribeAnnouncements((data) => {
       setItems(data);
       setLoading(false);
-    })();
-    return () => { alive = false; };
+    });
   }, []);
 
   const openAdd = () => { setForm(EMPTY); setEditId(null); setShowForm(true); setError(""); };
@@ -122,7 +111,7 @@ export default function AdminAnnouncementsPage() {
 
       setShowForm(false);
       setEditId(null);
-      await load();
+      // The subscription delivers the saved document; no manual reload needed.
 
       // Notifying is a separate step: a failure here must not make the admin
       // think the announcement itself didn't save.
@@ -150,7 +139,6 @@ export default function AdminAnnouncementsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this announcement? This cannot be undone.")) return;
     await deleteAnnouncement(id);
-    await load();
   };
 
   return (
@@ -184,13 +172,25 @@ export default function AdminAnnouncementsPage() {
 
       {/* Modal Form */}
       {showForm && (
-        <div className="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-bold text-gray-800">{editId ? "Edit Announcement" : "New Announcement"}</h2>
-              <button onClick={() => setShowForm(false)}><X size={22} className="text-gray-400 hover:text-gray-600" /></button>
+        <div
+          className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+          onClick={() => setShowForm(false)}
+        >
+          {/* Same bottom-sheet treatment as the seva form — see the note there
+              for why: this dashboard is used from a phone far more than a desk. */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-lg rounded-t-[1.75rem] sm:rounded-2xl shadow-2xl flex flex-col max-h-[92dvh] sm:max-h-[88vh]"
+          >
+            <div className="sm:hidden pt-3 pb-1 flex justify-center shrink-0">
+              <span className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center justify-between px-5 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-gray-100 shrink-0">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-800 truncate">{editId ? "Edit Announcement" : "New Announcement"}</h2>
+              <button type="button" aria-label="Close" onClick={() => setShowForm(false)} className="p-2 -mr-2 shrink-0"><X size={22} className="text-gray-400 hover:text-gray-600" /></button>
+            </div>
+            <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+              <div className="overflow-y-auto px-5 sm:px-6 py-5 space-y-4 flex-1">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Title *</label>
                 <input
@@ -263,8 +263,11 @@ export default function AdminAnnouncementsPage() {
                 </span>
               </button>
 
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-              <div className="flex gap-3 pt-2">
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+              </div>
+
+              {/* Pinned, so Save stays reachable above a phone keyboard. */}
+              <div className="flex gap-3 px-5 sm:px-6 py-4 border-t border-gray-100 shrink-0 rounded-b-[1.75rem] sm:rounded-b-2xl pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-gray-200 text-gray-600 hover:bg-gray-50 font-semibold py-2.5 rounded-xl transition-colors text-sm">Cancel</button>
                 <button type="submit" disabled={saving} className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm">
                   {saving ? "Saving…" : editId ? "Update" : "Post"}
