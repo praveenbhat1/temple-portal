@@ -42,10 +42,27 @@ export function buildUpiUri(opts: { amount: number; bookingId: string }): string
     ["am", opts.amount.toFixed(2)],
     ["cu", "INR"],
     ["tn", `Seva ${opts.bookingId}`],
+  ];
+
+  /**
+   * `tr` and `mc` are MERCHANT fields, and they travel together or not at all.
+   *
+   * Sending `tr` to a personal (P2P) VPA makes some banks process the payment
+   * under merchant rules, which carry far tighter caps — the devotee then sees
+   * "you have exceeded the bank limit for this payment, retry with a smaller
+   * amount" on a ₹1 transfer. So they are included only once the temple has an
+   * actual merchant VPA and category code.
+   *
+   * Nothing is lost by omitting them: the booking reference still rides along
+   * in `tn`, which is what shows up beside the credit in the bank statement.
+   */
+  const merchantCode = process.env.TEMPLE_UPI_MERCHANT_CODE?.trim();
+  if (merchantCode) {
+    params.push(["mc", merchantCode]);
     // Some UPI apps reject a reference containing punctuation, so SV-7KQM4P
     // travels as SV7KQM4P here. The readable form is still in `tn`.
-    ["tr", opts.bookingId.replace(/-/g, "")],
-  ];
+    params.push(["tr", opts.bookingId.replace(/-/g, "")]);
+  }
 
   const query = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
   return `upi://pay?${query}`;
