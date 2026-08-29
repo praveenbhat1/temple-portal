@@ -61,6 +61,12 @@ export interface Booking {
   paymentStatus: "pending" | "success" | "failed";
   /** How the devotee paid. Absent on bookings made before UPI was added. */
   paymentMethod?: "razorpay" | "upi-manual";
+  /**
+   * Legacy, read-only. The Razorpay gateway was removed in favour of the
+   * manual UPI flow, but bookings taken through it still exist and their
+   * receipts must keep printing the transaction id they were issued with.
+   * Nothing writes these any more.
+   */
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   /**
@@ -256,10 +262,9 @@ export function getSevaAvailability(seva: Seva): SevaAvailability {
 // deliberately no client-side booking writer here — firestore.rules denies
 // client writes to `bookings`.
 //
-// Two routes create them:
-//   • /api/razorpay/verify   — after the Razorpay signature checks out (success)
-//   • /api/bookings/create   — manual UPI flow (pending, until an admin settles
-//                              it through /api/bookings/confirm)
+// One route creates them: /api/bookings/create, which records the booking as
+// `pending`. It stays pending until an admin settles it through
+// /api/bookings/confirm, because plain UPI gives the server no callback.
 
 /** What /api/bookings/create hands back so the devotee can pay by UPI. */
 export interface UpiBookingIntent {
@@ -459,5 +464,5 @@ export async function deleteGalleryImage(id: string) {
   }
 }
 
-// Seva booking counters are incremented server-side in /api/razorpay/verify
+// Seva booking counters are incremented server-side in /api/bookings/confirm
 // with FieldValue.increment(), so a devotee's browser can never inflate them.

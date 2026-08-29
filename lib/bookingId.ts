@@ -1,9 +1,7 @@
 /**
  * Booking reference generation — server-side only (uses node:crypto).
  *
- * Lives here rather than inside a route so the Razorpay flow and the manual
- * UPI flow can never drift into producing different reference formats. The
- * reference is what a devotee reads out over the phone and what the temple
+ * The reference is what a devotee reads out over the phone and what the temple
  * matches against its bank statement, so the shape matters.
  */
 import crypto from "crypto";

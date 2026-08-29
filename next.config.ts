@@ -22,25 +22,24 @@ const SECURITY_HEADERS = [
     /**
      * CSP. 'unsafe-inline'/'unsafe-eval' on script-src are unavoidable here:
      * Next.js inlines its hydration bootstrap, the entrance pre-paint script in
-     * app/layout.tsx is inline by design, and the Firebase and Razorpay SDKs
-     * both need eval. The value of the policy is in the other directives —
+     * app/layout.tsx is inline by design, and the Firebase SDK needs eval.
+     * The value of the policy is in the other directives —
      * frame-ancestors, form-action and object-src close the injection paths
      * that actually get exploited on a site like this one.
      */
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.googleapis.com https://*.gstatic.com https://apis.google.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com https://apis.google.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://res.cloudinary.com https://lh3.googleusercontent.com https://www.gstatic.com https://www.transparenttextures.com",
       // api.cloudinary.com is where the admin gallery POSTs its uploads —
       // omitting it blocked every upload with no error the admin could see.
-      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebase.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.cloudinary.com https://api.razorpay.com https://lumberjack.razorpay.com https://fcmregistrations.googleapis.com",
-      // Razorpay's checkout iframe, Firebase's auth popup, and the embedded
-      // Google Map on /contact — which this policy silently blanked until
-      // maps.google.com was listed here.
-      "frame-src https://api.razorpay.com https://checkout.razorpay.com https://*.firebaseapp.com https://maps.google.com https://www.google.com",
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebase.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.cloudinary.com https://fcmregistrations.googleapis.com",
+      // Firebase's auth popup and the embedded Google Map on /contact — which
+      // this policy silently blanked until maps.google.com was listed here.
+      "frame-src https://*.firebaseapp.com https://maps.google.com https://www.google.com",
       "worker-src 'self'",
       "object-src 'none'",
       "base-uri 'self'",

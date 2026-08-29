@@ -1,99 +1,17 @@
 "use client";
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  subscribeSevas,
-  createUpiBooking,
-  Seva,
-  Booking,
-  UpiBookingIntent,
-} from "@/lib/firestore";
-import { Calendar, User, Phone, CheckCircle2, X, ShoppingBag, Download, CreditCard, Mail, Heart, ArrowRight, Smartphone, Clock3 } from "lucide-react";
+import { subscribeSevas, createUpiBooking, Seva, UpiBookingIntent } from "@/lib/firestore";
+import { Calendar, User, Phone, X, ShoppingBag, Download, Mail, Heart, ArrowRight, Smartphone, Clock3 } from "lucide-react";
 import SevaBoard from "@/components/SevaBoard";
 import UpiPayStep from "@/components/UpiPayStep";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
-import { generatePremiumReceipt, generateBookingAcknowledgement } from "@/lib/receipt";
-
-/** Shape of the payload Razorpay hands back on a failed payment. */
-type RazorpayFailure = { error?: { description?: string; reason?: string; code?: string } };
-
-/** Only the fields we actually pass to Razorpay Checkout. */
-interface RazorpayOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  notes?: Record<string, string>;
-  handler: (response: {
-    razorpay_payment_id: string;
-    razorpay_order_id: string;
-    razorpay_signature: string;
-  }) => void | Promise<void>;
-  modal?: { ondismiss?: () => void };
-  prefill?: { name?: string; contact?: string; email?: string };
-  theme?: { color?: string };
-}
-
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => {
-      open: () => void;
-      on: (event: "payment.failed", handler: (response: RazorpayFailure) => void) => void;
-    };
-  }
-}
+import { generateBookingAcknowledgement } from "@/lib/receipt";
 
 function todayISO() {
   return new Date().toISOString().split("T")[0];
-}
-
-/**
- * Which payment path the site is running.
- *
- * "upi"      — devotee pays by UPI intent/QR, a temple admin confirms it by
- *              hand in /admin/bookings. No gateway, no fees, no card support.
- * "razorpay" — the gateway flow below. Set NEXT_PUBLIC_PAYMENT_MODE=razorpay to
- *              switch back to it; nothing about it was removed.
- */
-const PAYMENT_MODE: "upi" | "razorpay" =
-  process.env.NEXT_PUBLIC_PAYMENT_MODE === "razorpay" ? "razorpay" : "upi";
-
-const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-
-/**
- * Resolve once the Razorpay checkout script is genuinely ready.
- *
- * Previously the script was appended and then used immediately, so submitting
- * before it finished loading threw "window.Razorpay is not a constructor" and
- * the checkout never opened.
- */
-function loadRazorpay(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window !== "undefined" && window.Razorpay) return resolve();
-
-    const existing = document.getElementById("razorpay-script") as HTMLScriptElement | null;
-    const script = existing ?? document.createElement("script");
-
-    const onLoad = () => (window.Razorpay ? resolve() : reject(new Error("script_no_global")));
-    const onError = () => reject(new Error("script_blocked"));
-
-    script.addEventListener("load", onLoad, { once: true });
-    script.addEventListener("error", onError, { once: true });
-
-    if (!existing) {
-      script.id = "razorpay-script";
-      script.src = RAZORPAY_SRC;
-      script.async = true;
-      document.body.appendChild(script);
-    }
-
-    // Don't hang forever if the network swallows it.
-    window.setTimeout(() => reject(new Error("script_timeout")), 15000);
-  });
 }
 
 // ─── Unified Booking Form ─────────────────────────────────────────────────────
@@ -104,23 +22,9 @@ interface BookingFormProps {
   defaultDate: string;
   /** Manual UPI flow — the devotee says they have paid, awaiting confirmation. */
   onAwaitingConfirmation: (booking: AwaitingBooking) => void;
-  onSuccess: (booking: {
-    bookingId: string;
-    userName: string;
-    phone: string;
-    email?: string;
-    sevas: { sevaId: string; name: string; price: number }[];
-    totalAmount: number;
-    bookingDate: string;
-    eventDate: string;
-    paymentStatus: "success";
-    razorpayOrderId: string;
-    razorpayPaymentId: string;
-    id?: string;
-  }) => void;
 }
 
-function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuccess }: BookingFormProps) {
+function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: BookingFormProps) {
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
   // defaultDate is computed by the caller's click handler, so today's date never
   // has to be read during render or patched in from an effect.
@@ -130,15 +34,7 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
   /** Set once the pending booking exists and the devotee needs to pay by UPI. */
   const [upiIntent, setUpiIntent] = useState<UpiBookingIntent | null>(null);
 
-  useEffect(() => {
-    if (PAYMENT_MODE !== "razorpay") return;
-    // Warm the checkout script up front; handlePay awaits it regardless.
-    loadRazorpay().catch(() => {
-      /* surfaced on submit instead of nagging on open */
-    });
-  }, []);
-
-  /** Shared front-half of both flows: validate, then hand back clean values. */
+  /** Validate the form, then hand back clean values. */
   const validate = (): { phone: string } | null => {
     if (!form.userName || !form.phone || !form.eventDate) {
       setError("Please fill all required fields.");
@@ -175,153 +71,6 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
     } catch (err) {
       setError((err as Error).message || "Could not start the booking. Please try again.");
     } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handlePay = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const valid = validate();
-    if (!valid) return;
-
-    setSubmitting(true);
-    setError("");
-
-    const normalizedPhone = valid.phone;
-    const sevaLines = selectedSevas.map(s => ({ sevaId: s.id!, name: s.name, price: s.price }));
-
-    try {
-      // 1. Make sure the checkout script is actually usable before we need it.
-      try {
-        await loadRazorpay();
-      } catch {
-        throw new Error(
-          "The payment window could not be loaded. Please check your internet connection " +
-            "or disable any ad blocker, then try again."
-        );
-      }
-
-      const publishableKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-      if (!publishableKey) {
-        throw new Error("Online payment is not configured for this temple yet.");
-      }
-
-      // 2. Create the order server-side.
-      const orderRes = await fetch("/api/razorpay/order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: totalAmount }),
-      });
-
-      const order = await orderRes.json().catch(() => ({}));
-      // The server owns the booking reference.
-      const bookingId: string = order?.bookingId;
-
-      if (!orderRes.ok) {
-        // Log everything, show the devotee something actionable.
-        console.error("Order creation failed:", order);
-        if (order?.reason === "razorpay_auth_failed") {
-          throw new Error(
-            "Online payment is temporarily unavailable — the temple's payment credentials " +
-              "need to be renewed. Please try again later or contact the temple office."
-          );
-        }
-        throw new Error(order?.error || "Could not start the payment. Please try again.");
-      }
-
-      // 3. Open checkout.
-      const options = {
-        key: publishableKey,
-        amount: order.amount,
-        currency: order.currency,
-        name: "Sri Vinayaka Temple",
-        description:
-          selectedSevas.length === 1
-            ? `Seva: ${selectedSevas[0].name}`
-            : `Sacred Offering: ${selectedSevas.length} Sevas`,
-        order_id: order.id,
-        notes: { bookingId, userName: form.userName, phone: normalizedPhone, eventDate: form.eventDate },
-        handler: async (response: {
-          razorpay_payment_id: string;
-          razorpay_order_id: string;
-          razorpay_signature: string;
-        }) => {
-          try {
-            // 4. The server verifies the signature and writes the booking.
-            const verifyRes = await fetch("/api/razorpay/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...response,
-                bookingId,
-                userName: form.userName,
-                phone: normalizedPhone,
-                email: form.email.trim() || "",
-                sevas: sevaLines,
-                eventDate: form.eventDate,
-              }),
-            });
-
-            const result = await verifyRes.json().catch(() => ({}));
-
-            if (!verifyRes.ok) {
-              console.error("Payment verification failed:", result);
-              setError(
-                result?.reason === "bad_signature"
-                  ? "This payment could not be verified. Please contact the temple office with your payment ID: " +
-                      response.razorpay_payment_id
-                  : "Your payment went through but we could not save the booking. Please keep this " +
-                      `payment ID and contact the temple office: ${response.razorpay_payment_id}`
-              );
-              setSubmitting(false);
-              return;
-            }
-
-            onSuccess({
-              bookingId: result.bookingId ?? bookingId,
-              userName: result.userName ?? form.userName,
-              phone: result.phone ?? normalizedPhone,
-              email: result.email ?? form.email.trim(),
-              sevas: result.sevas ?? sevaLines,
-              totalAmount: result.totalAmount ?? totalAmount,
-              bookingDate: result.bookingDate ?? todayISO(),
-              eventDate: result.eventDate ?? form.eventDate,
-              paymentStatus: "success",
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              id: result.id,
-            });
-          } catch (err) {
-            console.error("Verification request threw:", err);
-            setError(
-              "Your payment went through but confirmation failed. Please keep this payment ID " +
-                `and contact the temple office: ${response.razorpay_payment_id}`
-            );
-          } finally {
-            setSubmitting(false);
-          }
-        },
-        modal: { ondismiss: () => setSubmitting(false) },
-        prefill: { name: form.userName, contact: normalizedPhone, email: form.email },
-        theme: { color: "#c2410c" },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", (response: RazorpayFailure) => {
-        console.error("Razorpay payment failed:", response.error);
-        setError(
-          response.error?.description
-            ? `Payment failed: ${response.error.description}`
-            : "Payment could not be completed. Please try again."
-        );
-        setSubmitting(false);
-      });
-      rzp.open();
-    } catch (err) {
-      const errorObj = err as Error;
-      console.error("Payment initiation error:", errorObj);
-      setError(errorObj.message || "Payment could not be completed. Please try again.");
       setSubmitting(false);
     }
   };
@@ -367,7 +116,7 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
       </div>
 
       {/* Inputs */}
-      <form onSubmit={PAYMENT_MODE === "razorpay" ? handlePay : handleUpi} className="space-y-6">
+      <form onSubmit={handleUpi} className="space-y-6">
         <div className="relative">
           <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Devotee Name</label>
           <div className="relative">
@@ -447,12 +196,7 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
           className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3 group"
         >
           {submitting ? (
-            PAYMENT_MODE === "razorpay" ? "Processing Payment…" : "Preparing your UPI payment…"
-          ) : PAYMENT_MODE === "razorpay" ? (
-            <>
-              <CreditCard size={18} />
-              Proceed to Payment
-            </>
+            "Preparing your UPI payment…"
           ) : (
             <>
               <Smartphone size={18} />
@@ -467,20 +211,17 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation, onSuc
 
 // ─── Modal wrapper ─────────────────────────────────────────────────────────────
 
-function BookingModal({ selectedSevas, defaultDate, onClose, onAwaitingConfirmation, onSuccess }: { selectedSevas: Seva[], defaultDate: string, onClose: () => void, onAwaitingConfirmation: (booking: AwaitingBooking) => void, onSuccess: (b: {
-    bookingId: string;
-    userName: string;
-    phone: string;
-    email?: string;
-    sevas: { sevaId: string; name: string; price: number }[];
-    totalAmount: number;
-    bookingDate: string;
-    eventDate: string;
-    paymentStatus: "success";
-    razorpayOrderId: string;
-    razorpayPaymentId: string;
-    id?: string;
-  }) => void }) {
+function BookingModal({
+  selectedSevas,
+  defaultDate,
+  onClose,
+  onAwaitingConfirmation,
+}: {
+  selectedSevas: Seva[];
+  defaultDate: string;
+  onClose: () => void;
+  onAwaitingConfirmation: (booking: AwaitingBooking) => void;
+}) {
   return (
     <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
       <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-4xl p-6 md:p-10 lg:p-12 my-auto relative">
@@ -501,47 +242,7 @@ function BookingModal({ selectedSevas, defaultDate, onClose, onAwaitingConfirmat
           selectedSevas={selectedSevas}
           defaultDate={defaultDate}
           onAwaitingConfirmation={onAwaitingConfirmation}
-          onSuccess={onSuccess}
         />
-      </div>
-    </div>
-  );
-}
-
-// ─── Success Component ────────────────────────────────────────────────────────
-
-function SuccessView({ booking, onClose }: { booking: Booking, onClose: () => void }) {
-  const download = () => {
-    const doc = generatePremiumReceipt(booking);
-    doc.save(`Receipt_SriVinayaka_${booking.bookingId}.pdf`);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-xl p-8 md:p-12 text-center relative">
-        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8 text-green-600">
-          <CheckCircle2 size={40} />
-        </div>
-        <h2 className="text-3xl font-serif text-gray-900 mb-4">Divine Offering Received</h2>
-        <p className="text-gray-500 font-sans leading-relaxed mb-10">
-          May Lord Sri Vinayaka bless you. Your sevas have been successfully scheduled. You can now download your sacred receipt.
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <button
-            onClick={download}
-            className="flex-1 bg-saffron-600 hover:bg-saffron-700 text-white px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-saffron-100"
-          >
-            <Download size={18} />
-            Download Receipt
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-700 px-8 py-4 rounded-full font-bold hover:bg-gray-50 transition-all"
-          >
-            Done
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -647,7 +348,6 @@ function SevasContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Holds today's date while the booking modal is open, null when it's closed.
   const [bookingDefaultDate, setBookingDefaultDate] = useState<string | null>(null);
-  const [completedBooking, setCompletedBooking] = useState<Booking | null>(null);
   /** Manual UPI flow — booking recorded, payment not yet verified. */
   const [awaitingBooking, setAwaitingBooking] = useState<AwaitingBooking | null>(null);
 
@@ -708,14 +408,6 @@ function SevasContent() {
     setBookingDefaultDate(null);
     setAwaitingBooking(booking);
     setSelectedIds([]);
-  };
-
-  const handleBookingSuccess = (b: Booking) => {
-    setBookingDefaultDate(null);
-    setCompletedBooking(b);
-    setSelectedIds([]);
-    // Booking counts are incremented server-side; the live subscription above
-    // delivers the new numbers on its own, so there is nothing to re-fetch.
   };
 
   return (
@@ -808,7 +500,6 @@ function SevasContent() {
           defaultDate={bookingDefaultDate}
           onClose={() => setBookingDefaultDate(null)}
           onAwaitingConfirmation={handleAwaitingConfirmation}
-          onSuccess={handleBookingSuccess}
         />
       )}
 
@@ -820,10 +511,6 @@ function SevasContent() {
         />
       )}
 
-      {/* Success View */}
-      {completedBooking && (
-        <SuccessView booking={completedBooking} onClose={() => setCompletedBooking(null)} />
-      )}
     </div>
   );
 }

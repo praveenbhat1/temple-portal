@@ -46,8 +46,11 @@ Two consequences to keep in mind:
   admin verified against the statement and goes on the receipt. The second is
   what the devotee typed. Never let one stand in for the other.
 
-The Razorpay gateway path is still present and working. Set
-`NEXT_PUBLIC_PAYMENT_MODE=razorpay` to switch to it.
+There is no payment gateway. That is the design, not a gap: UPI moves money
+straight into the temple's account with no fee and no settlement delay, and the
+cost is that a human confirms each credit. Bookings taken through the old
+Razorpay integration still exist and their receipts still print correctly, but
+nothing creates new ones.
 
 ---
 
@@ -166,9 +169,9 @@ app/
     bookings/paid             Devotee submits their UPI reference  (rate limited)
     bookings/confirm          Admin settles a booking              (admin only)
     bookings/lookup           Track Seva search                    (rate limited)
+    upi/donation              Donation VPA + QR                    (public)
     admin/health              Configuration diagnostics            (admin only)
     notify                    Push an announcement to devotees     (admin only)
-    razorpay/*                Gateway flow, when enabled
 
 components/
   UpiPayStep.tsx              Pay screen: GPay/PhonePe deep links, QR, UTR capture

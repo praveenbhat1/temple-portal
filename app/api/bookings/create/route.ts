@@ -15,9 +15,6 @@ import { check, clientIp, tooManyRequests } from "@/lib/rateLimit";
  * callback. This route only records the intent to pay. An admin confirms the
  * money actually arrived via /api/bookings/confirm, and only that flips the
  * booking to `success`.
- *
- * The Razorpay routes are untouched and still the path to use once a gateway is
- * back in play; see NEXT_PUBLIC_PAYMENT_MODE.
  */
 
 type SevaLine = { sevaId: string; name: string; price: number };
