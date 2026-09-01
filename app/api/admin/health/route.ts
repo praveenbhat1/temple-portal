@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdminConfigured, verifyAdminRequest } from "@/lib/firebaseAdmin";
 import { isUpiConfigured } from "@/lib/upi";
 import { messagingStatus } from "@/lib/notify";
+import { isBankAlertsConfigured } from "@/lib/bankAlerts";
 
 /**
  * What is and isn't switched on, for the System Health panel in /admin.
@@ -65,6 +66,16 @@ export async function GET(req: Request) {
         ? "SMS is available as a fallback for devotees without WhatsApp."
         : "Not set up. Optional fallback for devotees who don't use WhatsApp.",
       fix: "Optional. Set MSG91_AUTH_KEY (with MSG91_TEMPLATE_ID and MSG91_SENDER_ID) or FAST2SMS_API_KEY.",
+    },
+    {
+      id: "reconcile",
+      label: "Automatic payment confirmation",
+      ok: isBankAlertsConfigured(),
+      required: false,
+      detail: isBankAlertsConfigured()
+        ? "Bookings are confirmed automatically when the bank's credit alert matches the devotee's UPI reference."
+        : "Not set up. Every payment is confirmed by hand in Bookings, which works but is a daily chore.",
+      fix: "Optional. Send the bank's credit alerts to a dedicated Gmail, then set BANK_ALERT_IMAP_USER and BANK_ALERT_IMAP_PASSWORD (a Google App Password) and RECONCILE_SECRET.",
     },
     {
       id: "push",
