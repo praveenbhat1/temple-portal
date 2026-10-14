@@ -31,7 +31,6 @@ import {
   Menu,
   X,
   ExternalLink,
-  Stethoscope,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -40,8 +39,6 @@ const NAV_ITEMS = [
   { href: "/admin/sevas", label: "Sevas", icon: ScrollText },
   { href: "/admin/announcements", label: "Announcements", icon: Bell },
   { href: "/admin/gallery", label: "Gallery", icon: ImageIcon },
-  // A diagnostic, not day-to-day work — last in the list on purpose.
-  { href: "/admin/upi-test", label: "UPI diagnostics", icon: Stethoscope },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -3,10 +3,10 @@
  * Admin bookings — the temple's daily work queue.
  *
  * Three jobs, in order of how often they happen:
- *   1. Settle pending UPI bookings. Plain UPI gives the server no callback, so
- *      a human matches each credit in the bank statement against a booking and
- *      marks it paid. The devotee's own UPI reference (if they entered one) is
- *      shown right on the row, which is what makes that match quick.
+ *   1. Keep an eye on payments. Razorpay confirms online UPI payments on its
+ *      own, and the payment id is shown on the row to look up in the Razorpay
+ *      dashboard. What stays `pending` is a booking nobody paid for — or one
+ *      paid at the counter, which an admin marks paid by hand.
  *   2. Answer "what sevas are happening on X?" — hence filtering by *event*
  *      date, not just the date the booking was taken.
  *   3. Tell the devotee. If no messaging provider is configured, the WhatsApp
@@ -41,7 +41,7 @@ import {
 type DateBasis = "eventDate" | "bookingDate";
 
 /**
- * Settle a pending UPI booking.
+ * Settle a pending booking by hand.
  *
  * The write happens in /api/bookings/confirm under the Admin SDK — this only
  * carries the admin's identity and the reference they read off the statement.
@@ -139,6 +139,7 @@ function AdminBookings() {
         b.userName?.toLowerCase().includes(term) ||
         b.phone?.includes(term) ||
         b.bookingId?.toLowerCase().includes(term) ||
+        b.razorpayPaymentId?.toLowerCase().includes(term) ||
         b.upiRef?.toLowerCase().includes(term) ||
         b.devoteeUpiRef?.toLowerCase().includes(term);
 
@@ -231,6 +232,7 @@ function AdminBookings() {
       "Booked on",
       "Seva date",
       "Status",
+      "Razorpay payment",
       "Verified ref",
       "Devotee ref",
     ];
@@ -245,6 +247,7 @@ function AdminBookings() {
       b.bookingDate || "",
       b.eventDate || "",
       b.paymentStatus,
+      b.razorpayPaymentId || "",
       b.upiRef || "",
       b.devoteeUpiRef || "",
     ]);
@@ -316,7 +319,7 @@ function AdminBookings() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
-              placeholder="Name, phone, booking ID or UPI reference"
+              placeholder="Name, phone, booking ID or payment id"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={`${INPUT} pl-11`}
@@ -727,6 +730,13 @@ function BookingRow({
  * statement. Collapsing them into one line would let a claim read as a proof.
  */
 function PaymentRef({ booking }: { booking: Booking }) {
+  if (booking.razorpayPaymentId) {
+    return (
+      <p className="text-[10px] text-green-700 font-mono mt-1 flex items-center gap-1" title="Verified by Razorpay">
+        <CheckCircle2 size={9} /> {booking.razorpayPaymentId}
+      </p>
+    );
+  }
   if (booking.upiRef) {
     return (
       <p className="text-[10px] text-green-700 font-mono mt-1 flex items-center gap-1" title="Verified by the temple office">

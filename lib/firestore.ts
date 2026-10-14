@@ -59,29 +59,29 @@ export interface Booking {
   /** Primary event date (usually from the first seva or user-chosen) */
   eventDate: string;
   paymentStatus: "pending" | "success" | "failed";
-  /** How the devotee paid. Absent on bookings made before UPI was added. */
-  paymentMethod?: "razorpay" | "upi-manual";
   /**
-   * Legacy, read-only. The Razorpay gateway was removed in favour of the
-   * manual UPI flow, but bookings taken through it still exist and their
-   * receipts must keep printing the transaction id they were issued with.
-   * Nothing writes these any more.
+   * How the devotee paid. "upi-manual" is legacy: bookings from the old
+   * pay-by-UPI-link flow, which was replaced by Razorpay Checkout.
    */
+  paymentMethod?: "razorpay" | "upi-manual";
+  /** Set when the booking is created; the order the devotee pays. */
   razorpayOrderId?: string;
+  /** Set when Razorpay's signature for that order has been verified. */
   razorpayPaymentId?: string;
   /**
-   * Manual UPI flow only — the reference an ADMIN matched against the temple's
-   * bank statement. This is the verified one; it goes on the receipt.
+   * The reference an ADMIN matched against the temple's bank statement, for a
+   * booking marked paid by hand. This is a verified one; it goes on the receipt.
    */
   upiRef?: string;
   /**
-   * The reference the DEVOTEE typed on the pay screen. An unverified claim —
+   * Legacy, from the old pay-by-UPI-link flow; nothing writes the next three
+   * any more. The reference the DEVOTEE typed on the pay screen. An unverified claim —
    * anyone can type twelve digits — kept in its own field so it can never be
    * mistaken for `upiRef` above. It exists to make an admin's reconciliation
    * quick, not to stand in for it.
    */
   devoteeUpiRef?: string;
-  /** When the devotee said they had paid. Set by /api/bookings/paid. */
+  /** When the devotee said they had paid on the old pay screen. */
   devoteeMarkedPaidAt?: Timestamp;
   /**
    * True when the devotee confirmed payment without a reference number. The
@@ -269,34 +269,33 @@ export function getSevaAvailability(seva: Seva): SevaAvailability {
 // client writes to `bookings`.
 //
 // One route creates them: /api/bookings/create, which records the booking as
-// `pending`. It stays pending until an admin settles it through
-// /api/bookings/confirm, because plain UPI gives the server no callback.
+// `pending` alongside a Razorpay order. It turns `success` only when Razorpay's
+// signature checks out, in /api/razorpay/verify or the webhook.
 
-/** What /api/bookings/create hands back so the devotee can pay by UPI. */
-export interface UpiBookingIntent {
+/** What /api/bookings/create hands back so the devotee can pay. */
+export interface BookingOrder {
   id: string;
   bookingId: string;
   totalAmount: number;
   sevas: BookingSeva[];
-  /** upi://pay?… — opens a UPI app on mobile. */
-  upiUri: string;
-  /** PNG data URI of the same link, for desktop scanning. */
-  qrDataUrl: string;
+  razorpayOrderId: string;
+  /** The public half of the key pair, for Razorpay Checkout. */
+  razorpayKeyId: string;
 }
 
 /**
- * Create a pending booking and get back the UPI link to pay it with.
+ * Create a pending booking and the Razorpay order to pay it with.
  *
- * The booking is not paid at this point and deliberately says so — a temple
- * admin confirms it once the money shows up.
+ * The booking is not paid at this point — that is decided server-side from
+ * Razorpay's signature, never by this browser.
  */
-export async function createUpiBooking(payload: {
+export async function createBooking(payload: {
   userName: string;
   phone: string;
   email?: string;
   sevaIds: string[];
   eventDate: string;
-}): Promise<UpiBookingIntent> {
+}): Promise<BookingOrder> {
   const res = await fetch("/api/bookings/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -315,7 +314,7 @@ export async function createUpiBooking(payload: {
     // logging it as an error only trips Next's red dev overlay over a
     // configuration gap. The detail is what actually names the missing
     // variable, so log that rather than an object the overlay renders as "{}".
-    if (result.reason === "upi_not_configured" || result.reason === "admin_not_configured") {
+    if (result.reason === "payments_not_configured" || result.reason === "admin_not_configured") {
       console.warn(
         `Booking unavailable — ${result.detail ?? result.reason}. ` +
           "See the System Health panel in /admin."
@@ -337,7 +336,29 @@ export async function createUpiBooking(payload: {
     throw new Error(result.error || "Could not start the booking. Please try again.");
   }
 
-  return result as unknown as UpiBookingIntent;
+  return result as unknown as BookingOrder;
+}
+
+/**
+ * Hand Razorpay's checkout response to the server, which checks the signature
+ * and marks the booking paid. Throws if the payment could not be confirmed.
+ */
+export async function verifyPayment(payload: {
+  id: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}): Promise<void> {
+  const res = await fetch("/api/razorpay/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const result = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+    console.error(`Payment verification failed (HTTP ${res.status}): ${result.reason ?? "unknown"}`);
+    throw new Error(result.error || "Your payment could not be confirmed yet.");
+  }
 }
 
 export async function getBookings(): Promise<Booking[]> {

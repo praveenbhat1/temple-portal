@@ -3,15 +3,15 @@ import { isAdminConfigured, verifyAdminRequest } from "@/lib/firebaseAdmin";
 import { settleBooking } from "@/lib/settleBooking";
 
 /**
- * Settle a pending UPI booking: mark it paid (or rejected) after a temple admin
- * has seen the money land.
+ * Settle a pending booking by hand: mark it paid (or rejected) from
+ * /admin/bookings.
  *
- * This is the trust anchor of the manual flow — the devotee's browser never
- * says "I paid" in a way that counts. Only an authenticated admin can move a
- * booking to `success` from here.
+ * Razorpay settles online payments on its own. This is for the exceptions —
+ * a devotee who paid at the temple counter, or an abandoned booking to close
+ * off. Only an authenticated admin can move a booking from here.
  *
- * The write itself lives in lib/settleBooking.ts, shared with the automatic
- * reconciler in /api/reconcile. Both must behave identically: the difference
+ * The write itself lives in lib/settleBooking.ts, shared with the Razorpay
+ * verify and webhook routes. All must behave identically: the difference
  * between them is who decided, never what happens.
  */
 

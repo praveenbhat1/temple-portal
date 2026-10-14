@@ -1,7 +1,7 @@
 # Sunkadakatte Sri Vinayaka Temple
 
-The temple's website: devotees browse and book sevas, pay by UPI, and track a
-booking; the temple confirms payments and manages the site from `/admin`.
+The temple's website: devotees browse and book sevas, pay by UPI through
+Razorpay, and track a booking; the temple manages the site from `/admin`.
 
 Built with **Next.js 16 (App Router) · TypeScript · Tailwind · Firebase**.
 
@@ -9,48 +9,43 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind · Firebase**.
 
 ## How a booking actually works
 
-This is the part worth understanding before changing anything, because the
-whole design follows from one fact: **plain UPI has no callback.** Money moves
-into the temple's bank account and this server is never told. So:
+This is the part worth understanding before changing anything: **the browser
+never decides that a booking is paid.** Razorpay does, and the server checks
+its signature.
 
 ```
 Devotee picks sevas
         │
         ▼
 POST /api/bookings/create ──── writes a booking with paymentStatus: "pending"
+        │                      and creates a Razorpay order for it
         │                      prices come from the server, never the browser
         ▼
-Devotee pays (GPay / PhonePe deep link, or QR, or bank transfer)
+Razorpay Checkout (UPI only: GPay / PhonePe / any UPI app / QR)
         │
-        │  …nothing reports back here…
-        ▼
-POST /api/bookings/paid ────── devotee optionally submits their UPI reference
-        │                      stored as devoteeUpiRef — an unverified claim
-        ▼
-Temple admin matches the credit in the bank statement
+        ├─▶ POST /api/razorpay/verify ── checkout returned; HMAC signature check
         │
+        └─▶ POST /api/razorpay/webhook ─ payment.captured; the recovery path when
+                                         the devotee closed the tab first
         ▼
-POST /api/bookings/confirm ─── admin-only, transactional
+lib/settleBooking.ts ────────── transactional, exactly once
                                → paymentStatus: "success"
                                → seva counters increment
                                → devotee is messaged
                                → receipt becomes downloadable
 ```
 
-Two consequences to keep in mind:
+Things to keep in mind:
 
-- **Only `/api/bookings/confirm` can mark a booking paid.** A devotee's browser
-  saying "I paid" writes nothing that counts. `firestore.rules` denies all
-  client writes to `bookings`.
-- **`upiRef` and `devoteeUpiRef` are different things.** The first is what an
-  admin verified against the statement and goes on the receipt. The second is
-  what the devotee typed. Never let one stand in for the other.
-
-There is no payment gateway. That is the design, not a gap: UPI moves money
-straight into the temple's account with no fee and no settlement delay, and the
-cost is that a human confirms each credit. Bookings taken through the old
-Razorpay integration still exist and their receipts still print correctly, but
-nothing creates new ones.
+- **A booking is paid only after a signature check** (verify or webhook), or
+  when an admin marks it paid in `/admin/bookings` — for counter payments.
+  `firestore.rules` denies all client writes to `bookings`.
+- **Verify and webhook race safely.** Both go through `settleBooking`, so
+  whichever arrives second is a no-op.
+- **Set up the webhook.** Without it, a devotee who pays and closes the tab
+  before checkout returns stays `pending` until an admin notices.
+- Bookings from the old pay-by-UPI-link flow (`paymentMethod: "upi-manual"`,
+  `upiRef`, `devoteeUpiRef`) still exist and their receipts still print.
 
 ---
 
@@ -111,13 +106,17 @@ would then reject on every write — the dashboard would load and silently fail
 at each save. The `admins` collection is the single source of truth: the rules,
 the API routes and the UI all read it.
 
-### 5. UPI payments
+### 5. Payments (Razorpay)
 
-Set `TEMPLE_UPI_ID` to the temple's UPI id (e.g. `temple@okhdfcbank`) and
-`TEMPLE_UPI_NAME` to the name devotees should see in their UPI app.
+Set `NEXT_PUBLIC_RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` (Razorpay Dashboard →
+Account & Settings → API Keys). Use `rzp_test_…` keys locally — test checkout
+also offers a test card, since the desktop test QR cannot be paid — and
+`rzp_live_…` keys only in production, where checkout is UPI-only.
 
-> `.env.local` currently holds a **placeholder** UPI id. Replace it before going
-> live — until it is a working VPA, money paid through the site goes nowhere.
+Add a webhook (Dashboard → Webhooks): URL `https://<site>/api/razorpay/webhook`,
+event `payment.captured`, and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
+
+`TEMPLE_UPI_ID` is only for the open-amount donation QR on `/donate`.
 
 The temple's bank account lives in `lib/templeBank.ts` and is imported
 everywhere it is shown. Change it in that one file.
@@ -161,29 +160,30 @@ app/
   admin/
     layout.tsx                Auth-guarded shell (own chrome; no public navbar)
     page.tsx                  Dashboard: work queue, real revenue, health
-    bookings/                 Confirm payments, filter by date/seva, export CSV
+    bookings/                 Payments, filter by date/seva, export CSV
     sevas/  announcements/  gallery/  login/
 
   api/
-    bookings/create           Create a pending booking + UPI link  (rate limited)
-    bookings/paid             Devotee submits their UPI reference  (rate limited)
-    bookings/confirm          Admin settles a booking              (admin only)
+    bookings/create           Pending booking + Razorpay order     (rate limited)
+    razorpay/verify           Checkout signature check → paid      (rate limited)
+    razorpay/webhook          payment.captured → paid              (signed)
+    bookings/confirm          Admin settles a booking by hand      (admin only)
     bookings/lookup           Track Seva search                    (rate limited)
     upi/donation              Donation VPA + QR                    (public)
     admin/health              Configuration diagnostics            (admin only)
     notify                    Push an announcement to devotees     (admin only)
 
 components/
-  UpiPayStep.tsx              Pay screen: GPay/PhonePe deep links, QR, UTR capture
   TempleEntrance.tsx          The homepage intro ceremony
-  BankTransferDetails.tsx     Bank fallback for devotees who don't use UPI
   Navbar / Footer / SevaBoard / SevaCard / AnnouncementCard / NotificationButton
 
 lib/
   firebase.ts                 Browser SDK init
   firebaseAdmin.ts            Server SDK + verifyAdminRequest()  — server only
   firestore.ts                Firestore helpers and shared types
-  upi.ts                      Builds the upi://pay URI            — server only
+  razorpay.ts                 Orders + signature checks           — server only
+  settleBooking.ts            The one place a booking is marked paid
+  upi.ts                      Donation upi://pay URI              — server only
   upiApps.ts                  Per-app deep links (GPay, PhonePe, Paytm)
   messages.ts                 Devotee message templates + wa.me links
   notify.ts                   WhatsApp / SMS providers            — server only

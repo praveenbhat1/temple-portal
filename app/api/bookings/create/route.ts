@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
-import QRCode from "qrcode";
 import { adminDb, FieldValue, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { generateBookingId } from "@/lib/bookingId";
-import { buildUpiUri, isUpiConfigured } from "@/lib/upi";
+import { createOrder, isRazorpayConfigured, razorpayKeyId, RazorpayError } from "@/lib/razorpay";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import { isValidIndianPhone, normalizePhone } from "@/lib/utils";
 import { check, clientIp, tooManyRequests } from "@/lib/rateLimit";
 
 /**
- * Create a *pending* booking for the manual UPI flow and hand back the UPI
- * intent link the devotee should pay with.
+ * Create a *pending* booking and the Razorpay order the devotee pays it with.
  *
- * Nothing here proves a payment happened — it cannot, because plain UPI has no
- * callback. This route only records the intent to pay. An admin confirms the
- * money actually arrived via /api/bookings/confirm, and only that flips the
- * booking to `success`.
+ * Nothing here proves a payment happened. The booking flips to `success` only
+ * once Razorpay's signature checks out — in /api/razorpay/verify when the
+ * checkout returns, or in /api/razorpay/webhook if the tab was closed first.
+ *
+ * The order's amount is fixed here from the temple's own prices, so the
+ * browser has no way to pay less than the sevas cost.
  */
 
 type SevaLine = { sevaId: string; name: string; price: number };
@@ -57,12 +57,12 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!isUpiConfigured()) {
+  if (!isRazorpayConfigured()) {
     return NextResponse.json(
       {
-        error: "UPI payment is not set up for this temple yet.",
-        reason: "upi_not_configured",
-        detail: "TEMPLE_UPI_ID is not set on the server.",
+        error: "Online payment is not set up for this temple yet.",
+        reason: "payments_not_configured",
+        detail: "NEXT_PUBLIC_RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set on the server.",
       },
       { status: 503 }
     );
@@ -142,8 +142,8 @@ export async function POST(req: Request) {
   try {
     const db = adminDb();
 
-    // Prices are resolved here, never taken from the browser — the amount in
-    // the UPI link is what the devotee actually gets charged.
+    // Prices are resolved here, never taken from the browser — the amount on
+    // the Razorpay order is what the devotee actually gets charged.
     const resolved = await resolveSevas(db, sevaIds);
     if ("error" in resolved) {
       return NextResponse.json({ error: resolved.error, reason: resolved.reason }, { status: 400 });
@@ -152,7 +152,8 @@ export async function POST(req: Request) {
     const sevas = resolved.sevas;
     const totalAmount = sevas.reduce((sum, s) => sum + s.price, 0);
 
-    if (totalAmount <= 0) {
+    // Razorpay rejects orders under 100 paise.
+    if (totalAmount < 1) {
       return NextResponse.json(
         { error: "This offering has no payable amount.", reason: "zero_amount" },
         { status: 400 }
@@ -160,7 +161,14 @@ export async function POST(req: Request) {
     }
 
     const bookingId = generateBookingId();
-    const upiUri = buildUpiUri({ amount: totalAmount, bookingId });
+    // The document id is chosen up front so the order's notes can carry it —
+    // that is how the webhook finds this booking without a query.
+    const ref = db.collection("bookings").doc();
+    const order = await createOrder({
+      amount: totalAmount,
+      bookingId,
+      notes: { bookingId, bookingDocId: ref.id },
+    });
 
     const booking = {
       bookingId,
@@ -172,15 +180,13 @@ export async function POST(req: Request) {
       bookingDate: todayISO(),
       eventDate,
       paymentStatus: "pending" as const,
-      paymentMethod: "upi-manual" as const,
-      source: "upi-intent" as const,
+      paymentMethod: "razorpay" as const,
+      razorpayOrderId: order.id,
+      source: "checkout" as const,
       createdAt: FieldValue.serverTimestamp(),
     };
 
-    const ref = await db.collection("bookings").add(booking);
-
-    // Rendered server-side so the QR library stays out of the client bundle.
-    const qrDataUrl = await QRCode.toDataURL(upiUri, { margin: 1, width: 320 });
+    await ref.set(booking);
 
     return NextResponse.json({
       ok: true,
@@ -188,10 +194,22 @@ export async function POST(req: Request) {
       bookingId,
       totalAmount,
       sevas,
-      upiUri,
-      qrDataUrl,
+      razorpayOrderId: order.id,
+      razorpayKeyId: razorpayKeyId(),
     });
   } catch (err) {
+    if (err instanceof RazorpayError) {
+      // A 401 means Razorpay rejected the key pair itself — the most common
+      // reason checkout never opens, so name it rather than "try again".
+      console.error("Razorpay order creation failed:", err.statusCode, err.message);
+      return NextResponse.json(
+        {
+          error: "Could not start the payment. Please try again in a moment.",
+          reason: err.statusCode === 401 ? "razorpay_auth_failed" : "razorpay_error",
+        },
+        { status: 502 }
+      );
+    }
     console.error("Failed to create pending booking:", err);
     return NextResponse.json(
       { error: "Could not start the booking. Please try again.", reason: "write_failed" },
@@ -210,7 +228,7 @@ type ResolveResult = { sevas: SevaLine[] } | { error: string; reason: string };
  *
  * The Firestore reads are issued together rather than one per loop iteration —
  * a 10-seva basket used to cost 10 sequential round trips before the devotee
- * saw a QR code.
+ * could pay.
  */
 async function resolveSevas(
   db: FirebaseFirestore.Firestore,

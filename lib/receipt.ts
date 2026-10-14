@@ -20,8 +20,8 @@ interface jsPDFWithAutoTable extends jsPDF {
 /** How the money actually reached the temple, in the devotee's words. */
 function paymentMethodLabel(booking: Booking, isSuccess: boolean): string {
   if (!isSuccess) return "Payment was not completed";
-  // Legacy: bookings taken before the gateway was removed.
-  if (booking.razorpayPaymentId) return "Via Razorpay Secure Checkout";
+  if (booking.razorpayPaymentId) return "Via UPI (Razorpay Secure Checkout)";
+  // Legacy: the old pay-by-UPI-link flow, or a booking marked paid by hand.
   if (booking.paymentMethod === "upi-manual") return "Via UPI, verified by the temple office";
   return `Received by the temple (${TEMPLE_BANK_LINE})`;
 }

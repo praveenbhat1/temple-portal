@@ -246,7 +246,11 @@ function DonateUpiCard({
   );
 }
 
-/** See the identical note in components/UpiPayStep.tsx. */
+/**
+ * The platform never changes for the life of the page, so the store never
+ * notifies and the snapshot is computed once and cached — returning a fresh
+ * value on each call would make React loop.
+ */
 const subscribeNever = () => () => {};
 let cachedPlatform: Platform | null = null;
 const getPlatformSnapshot = (): Platform => (cachedPlatform ??= detectPlatform());

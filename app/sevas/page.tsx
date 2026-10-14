@@ -1,17 +1,95 @@
 "use client";
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { subscribeSevas, createUpiBooking, Seva, UpiBookingIntent } from "@/lib/firestore";
-import { Calendar, User, Phone, X, ShoppingBag, Download, Mail, Heart, ArrowRight, Smartphone, Clock3 } from "lucide-react";
+import { subscribeSevas, createBooking, verifyPayment, Seva, Booking, BookingOrder } from "@/lib/firestore";
+import { Calendar, User, Phone, X, ShoppingBag, Download, Mail, Heart, ArrowRight, Smartphone, Clock3, CheckCircle2 } from "lucide-react";
 import SevaBoard from "@/components/SevaBoard";
-import UpiPayStep from "@/components/UpiPayStep";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
-import { generateBookingAcknowledgement } from "@/lib/receipt";
+import { generateBookingAcknowledgement, generatePremiumReceipt } from "@/lib/receipt";
 
 function todayISO() {
   return new Date().toISOString().split("T")[0];
+}
+
+// ─── Razorpay Checkout ────────────────────────────────────────────────────────
+
+type CheckoutResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+};
+
+/** Only the fields we actually pass to Razorpay Checkout. */
+interface RazorpayOptions {
+  key: string;
+  order_id: string;
+  name: string;
+  description: string;
+  handler: (response: CheckoutResponse) => void;
+  prefill?: { name?: string; contact?: string; email?: string };
+  notes?: Record<string, string>;
+  config?: unknown;
+  theme?: { color?: string };
+  modal?: { ondismiss?: () => void };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => {
+      open: () => void;
+      on: (event: "payment.failed", handler: (r: { error?: { description?: string } }) => void) => void;
+    };
+  }
+}
+
+const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+/**
+ * Resolve once the checkout script is genuinely ready. Using window.Razorpay
+ * before the script finished loading is what used to make checkout silently
+ * fail to open on a slow connection.
+ */
+function loadRazorpay(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.Razorpay) return resolve();
+
+    const existing = document.getElementById("razorpay-script") as HTMLScriptElement | null;
+    const script = existing ?? document.createElement("script");
+    script.addEventListener("load", () => (window.Razorpay ? resolve() : reject(new Error("no_global"))), { once: true });
+    script.addEventListener("error", () => reject(new Error("script_blocked")), { once: true });
+    if (!existing) {
+      script.id = "razorpay-script";
+      script.src = RAZORPAY_SRC;
+      script.async = true;
+      document.body.appendChild(script);
+    }
+    window.setTimeout(() => reject(new Error("script_timeout")), 15000);
+  });
+}
+
+/**
+ * Show only UPI in the checkout — GPay, PhonePe, Paytm, any UPI app, or a QR
+ * on desktop. Cards and netbanking are hidden here; switch them off in the
+ * Razorpay dashboard too, since this only governs what the checkout displays.
+ *
+ * With test keys a card is offered as well. Desktop test checkout shows only a
+ * UPI QR, which no real app can pay, so without the test card there is no way
+ * to complete a payment end to end. Verification is the same for every method.
+ */
+function checkoutConfig(keyId: string) {
+  const testMode = keyId.startsWith("rzp_test_");
+  return {
+    display: {
+      blocks: {
+        upi: { name: "Pay with UPI", instruments: [{ method: "upi" }] },
+        ...(testMode && { card: { name: "Test card", instruments: [{ method: "card" }] } }),
+      },
+      sequence: testMode ? ["block.upi", "block.card"] : ["block.upi"],
+      preferences: { show_default_blocks: false },
+    },
+  };
 }
 
 // ─── Unified Booking Form ─────────────────────────────────────────────────────
@@ -20,19 +98,32 @@ interface BookingFormProps {
   selectedSevas: Seva[];
   /** Today's date (YYYY-MM-DD), captured when the modal was opened. */
   defaultDate: string;
-  /** Manual UPI flow — the devotee says they have paid, awaiting confirmation. */
+  /** Paid, and the server has verified Razorpay's signature. */
+  onPaid: (booking: Booking) => void;
+  /** Paid, but the verify call failed — the webhook will settle it. */
   onAwaitingConfirmation: (booking: AwaitingBooking) => void;
 }
 
-function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: BookingFormProps) {
+function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmation }: BookingFormProps) {
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
   // defaultDate is computed by the caller's click handler, so today's date never
   // has to be read during render or patched in from an effect.
   const [form, setForm] = useState({ userName: "", phone: "", email: "", eventDate: defaultDate });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  /** Set once the pending booking exists and the devotee needs to pay by UPI. */
-  const [upiIntent, setUpiIntent] = useState<UpiBookingIntent | null>(null);
+  /**
+   * Set once the pending booking and its order exist. Kept across a dismissed
+   * checkout, so "try again" reopens the same order instead of creating a
+   * second booking for the same sevas.
+   */
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+
+  useEffect(() => {
+    // Warm the checkout script up front; openCheckout awaits it regardless.
+    loadRazorpay().catch(() => {
+      /* surfaced on submit instead of on open */
+    });
+  }, []);
 
   /** Validate the form, then hand back clean values. */
   const validate = (): { phone: string } | null => {
@@ -48,10 +139,68 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: Boo
   };
 
   /**
-   * Manual UPI flow: record a pending booking, then show the devotee a QR and
-   * an intent link carrying the booking reference. No payment is proven here.
+   * Open Razorpay Checkout for an order. `submitting` stays true until the
+   * devotee pays or closes the checkout, so the button cannot open two.
    */
-  const handleUpi = async (e: React.FormEvent) => {
+  const openCheckout = async (current: BookingOrder, phone: string) => {
+    try {
+      await loadRazorpay();
+    } catch {
+      setSubmitting(false);
+      setError("The payment window could not load. Check your connection and try again.");
+      return;
+    }
+
+    const rzp = new window.Razorpay!({
+      key: current.razorpayKeyId,
+      order_id: current.razorpayOrderId,
+      name: "Sri Vinayaka Temple",
+      description: `Seva booking ${current.bookingId}`,
+      prefill: { name: form.userName, contact: `+91${phone}`, email: form.email.trim() || undefined },
+      notes: { bookingId: current.bookingId },
+      config: checkoutConfig(current.razorpayKeyId),
+      theme: { color: "#9a3412" },
+      handler: async (response) => {
+        const base = { userName: form.userName, phone, eventDate: form.eventDate };
+        try {
+          await verifyPayment({ id: current.id, ...response });
+          onPaid({
+            id: current.id,
+            bookingId: current.bookingId,
+            ...base,
+            email: form.email.trim() || undefined,
+            sevas: current.sevas,
+            totalAmount: current.totalAmount,
+            bookingDate: todayISO(),
+            paymentStatus: "success",
+            paymentMethod: "razorpay",
+            razorpayOrderId: current.razorpayOrderId,
+            razorpayPaymentId: response.razorpay_payment_id,
+          });
+        } catch {
+          // The money moved; only our confirmation call failed. The webhook
+          // settles it, so tell the devotee it is on its way, not that it failed.
+          onAwaitingConfirmation({ order: current, ...base });
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          setSubmitting(false);
+          setError("Payment was not completed. Nothing has been charged — you can try again.");
+        },
+      },
+    });
+
+    // Razorpay shows the failure inside the checkout and lets the devotee
+    // retry there; this only keeps the reason for when they close it.
+    rzp.on("payment.failed", (r) => {
+      if (r.error?.description) console.warn("Razorpay payment failed:", r.error.description);
+    });
+
+    rzp.open();
+  };
+
+  const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
     const valid = validate();
     if (!valid) return;
@@ -59,39 +208,26 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: Boo
     setSubmitting(true);
     setError("");
 
+    if (order) {
+      await openCheckout(order, valid.phone);
+      return;
+    }
+
     try {
-      const intent = await createUpiBooking({
+      const created = await createBooking({
         userName: form.userName,
         phone: valid.phone,
         email: form.email.trim() || undefined,
         sevaIds: selectedSevas.map((s) => s.id!),
         eventDate: form.eventDate,
       });
-      setUpiIntent(intent);
+      setOrder(created);
+      await openCheckout(created, valid.phone);
     } catch (err) {
-      setError((err as Error).message || "Could not start the booking. Please try again.");
-    } finally {
       setSubmitting(false);
+      setError((err as Error).message || "Could not start the booking. Please try again.");
     }
   };
-
-  // Once the pending booking exists, the form is replaced by the pay-by-UPI
-  // step — going back would only orphan the booking that was just created.
-  if (upiIntent) {
-    return (
-      <UpiPayStep
-        intent={upiIntent}
-        onPaid={() =>
-          onAwaitingConfirmation({
-            intent: upiIntent,
-            userName: form.userName,
-            phone: normalizePhone(form.phone),
-            eventDate: form.eventDate,
-          })
-        }
-      />
-    );
-  }
 
   return (
     <div className="flex flex-col lg:grid lg:grid-cols-2 gap-10">
@@ -116,78 +252,82 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: Boo
       </div>
 
       {/* Inputs */}
-      <form onSubmit={handleUpi} className="space-y-6">
-        <div className="relative">
-          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Devotee Name</label>
+      <form onSubmit={handlePay} className="space-y-6">
+        {/* Locked once the booking exists: its order is for these details. */}
+        <fieldset disabled={Boolean(order)} className="space-y-6 disabled:opacity-70">
           <div className="relative">
-            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
-            <input
-              type="text" required
-              value={form.userName}
-              onChange={(e) => {
-                setForm({ ...form, userName: e.target.value });
-                setError("");
-              }}
-              placeholder="Full name"
-              className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
-            />
-          </div>
-        </div>
-
-        <div className="relative">
-          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Mobile Number</label>
-          <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 border-r border-saffron-100 pr-3">
-              <Phone className="text-saffron-600/50" size={18} />
-              <span className="text-xs font-bold text-gray-400">+91</span>
+            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Devotee Name</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <input
+                type="text" required
+                value={form.userName}
+                onChange={(e) => {
+                  setForm({ ...form, userName: e.target.value });
+                  setError("");
+                }}
+                placeholder="Full name"
+                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+              />
             </div>
-            <input
-              type="tel" required
-              value={form.phone}
-              onChange={(e) => {
-                setForm({ ...form, phone: e.target.value });
-                setError("");
-              }}
-              placeholder="XXXXXXXXXX"
-              maxLength={10}
-              className="w-full bg-white border border-saffron-100 rounded-2xl pl-24 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
-            />
           </div>
-        </div>
 
-        <div className="relative">
-          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Email Address (Optional)</label>
           <div className="relative">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => {
-                setForm({ ...form, email: e.target.value });
-                setError("");
-              }}
-              placeholder="devotee@example.com"
-              className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
-            />
+            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Mobile Number</label>
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 border-r border-saffron-100 pr-3">
+                <Phone className="text-saffron-600/50" size={18} />
+                <span className="text-xs font-bold text-gray-400">+91</span>
+              </div>
+              <input
+                type="tel" required
+                value={form.phone}
+                onChange={(e) => {
+                  setForm({ ...form, phone: e.target.value });
+                  setError("");
+                }}
+                placeholder="XXXXXXXXXX"
+                maxLength={10}
+                className="w-full bg-white border border-saffron-100 rounded-2xl pl-24 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="relative">
-          <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Preferred Date</label>
           <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
-            <input
-              type="date" required
-              value={form.eventDate}
-              onChange={(e) => {
-                setForm({ ...form, eventDate: e.target.value });
-                setError("");
-              }}
-              min={todayISO()}
-              className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
-            />
+            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Email Address (Optional)</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => {
+                  setForm({ ...form, email: e.target.value });
+                  setError("");
+                }}
+                placeholder="devotee@example.com"
+                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+              />
+            </div>
           </div>
-        </div>
+
+          <div className="relative">
+            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Preferred Date</label>
+            <div className="relative">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <input
+                type="date" required
+                value={form.eventDate}
+                onChange={(e) => {
+                  setForm({ ...form, eventDate: e.target.value });
+                  setError("");
+                }}
+                min={todayISO()}
+                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+              />
+            </div>
+          </div>
+
+        </fieldset>
 
         {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
 
@@ -196,11 +336,11 @@ function BookingForm({ selectedSevas, defaultDate, onAwaitingConfirmation }: Boo
           className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3 group"
         >
           {submitting ? (
-            "Preparing your UPI payment…"
+            "Waiting for your UPI payment…"
           ) : (
             <>
               <Smartphone size={18} />
-              Continue to UPI Payment
+              {order ? "Try UPI payment again" : `Pay ₹${totalAmount.toLocaleString("en-IN")} with UPI`}
             </>
           )}
         </button>
@@ -215,11 +355,13 @@ function BookingModal({
   selectedSevas,
   defaultDate,
   onClose,
+  onPaid,
   onAwaitingConfirmation,
 }: {
   selectedSevas: Seva[];
   defaultDate: string;
   onClose: () => void;
+  onPaid: (booking: Booking) => void;
   onAwaitingConfirmation: (booking: AwaitingBooking) => void;
 }) {
   return (
@@ -241,6 +383,7 @@ function BookingModal({
         <BookingForm
           selectedSevas={selectedSevas}
           defaultDate={defaultDate}
+          onPaid={onPaid}
           onAwaitingConfirmation={onAwaitingConfirmation}
         />
       </div>
@@ -250,16 +393,18 @@ function BookingModal({
 
 // ─── Awaiting-confirmation Component ──────────────────────────────────────────
 
-/** What the awaiting screen needs beyond the payment intent itself. */
+/** What the awaiting screen needs beyond the order itself. */
 export interface AwaitingBooking {
-  intent: UpiBookingIntent;
+  order: BookingOrder;
   userName: string;
   phone: string;
   eventDate: string;
 }
 
 /**
- * The end of the manual UPI flow.
+ * Paid, but this browser could not get the payment confirmed — usually a
+ * dropped connection right after the UPI app returned. The Razorpay webhook
+ * settles the booking on its own, and the devotee is messaged when it does.
  *
  * Deliberately does NOT offer a receipt: no payment has been verified yet, and
  * handing over a receipt for money the temple has not confirmed receiving would
@@ -274,18 +419,18 @@ function AwaitingConfirmationView({
   booking: AwaitingBooking;
   onClose: () => void;
 }) {
-  const { intent } = booking;
+  const { order } = booking;
 
   const downloadAcknowledgement = () => {
     generateBookingAcknowledgement({
-      bookingId: intent.bookingId,
+      bookingId: order.bookingId,
       userName: booking.userName,
       phone: booking.phone,
-      sevas: intent.sevas,
-      totalAmount: intent.totalAmount,
+      sevas: order.sevas,
+      totalAmount: order.totalAmount,
       eventDate: booking.eventDate,
       bookingDate: todayISO(),
-    }).save(`Booking_${intent.bookingId}.pdf`);
+    }).save(`Booking_${order.bookingId}.pdf`);
   };
 
   return (
@@ -295,10 +440,10 @@ function AwaitingConfirmationView({
           <Clock3 size={38} />
         </div>
 
-        <h2 className="text-3xl font-serif text-gray-900 mb-4">Booking Recorded</h2>
+        <h2 className="text-3xl font-serif text-gray-900 mb-4">Confirming Your Payment</h2>
         <p className="text-gray-500 font-sans leading-relaxed mb-8">
-          Thank you, {booking.userName.split(" ")[0]}. The temple office will verify your payment
-          and confirm this seva shortly — you&apos;ll get a message on{" "}
+          Thank you, {booking.userName.split(" ")[0]}. Your payment is being confirmed — please
+          don&apos;t pay again. You&apos;ll get a message on{" "}
           <span className="text-gray-700 font-medium">{booking.phone}</span> once it&apos;s done.
         </p>
 
@@ -307,7 +452,7 @@ function AwaitingConfirmationView({
             Booking Reference
           </p>
           <p className="font-mono font-bold tracking-widest text-saffron-700 text-xl">
-            {intent.bookingId}
+            {order.bookingId}
           </p>
         </div>
 
@@ -338,6 +483,53 @@ function AwaitingConfirmationView({
   );
 }
 
+/** Paid and verified by the server, so this receipt is a real one. */
+function SuccessView({ booking, onClose }: { booking: Booking; onClose: () => void }) {
+  const download = () => {
+    generatePremiumReceipt(booking).save(`Receipt_SriVinayaka_${booking.bookingId}.pdf`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
+      <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-xl p-8 md:p-12 text-center relative my-auto">
+        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8 text-green-600">
+          <CheckCircle2 size={40} />
+        </div>
+        <h2 className="text-3xl font-serif text-gray-900 mb-4">Divine Offering Received</h2>
+        <p className="text-gray-500 font-sans leading-relaxed mb-8">
+          May Lord Sri Vinayaka bless you, {booking.userName.split(" ")[0]}. Your payment is
+          confirmed and your seva is booked.
+        </p>
+
+        <div className="bg-saffron-50/60 border border-saffron-100 rounded-2xl px-6 py-5 mb-8">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">
+            Booking Reference
+          </p>
+          <p className="font-mono font-bold tracking-widest text-saffron-700 text-xl">
+            {booking.bookingId}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button
+            onClick={download}
+            className="flex-1 bg-saffron-600 hover:bg-saffron-700 text-white px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-saffron-100"
+          >
+            <Download size={18} />
+            Download Receipt
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-700 px-8 py-4 rounded-full font-bold hover:bg-gray-50 transition-all"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 function SevasContent() {
@@ -348,7 +540,9 @@ function SevasContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Holds today's date while the booking modal is open, null when it's closed.
   const [bookingDefaultDate, setBookingDefaultDate] = useState<string | null>(null);
-  /** Manual UPI flow — booking recorded, payment not yet verified. */
+  /** Paid and verified — shows the receipt. */
+  const [paidBooking, setPaidBooking] = useState<Booking | null>(null);
+  /** Paid, but confirmation is still on its way via the webhook. */
   const [awaitingBooking, setAwaitingBooking] = useState<AwaitingBooking | null>(null);
 
   useEffect(() => {
@@ -400,10 +594,15 @@ function SevasContent() {
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
 
   /**
-   * Manual UPI flow finished on the devotee's side. The seva counters are NOT
-   * touched here — that happens when an admin confirms the payment, so an
-   * unpaid booking can never consume a limited slot.
+   * The seva counters are NOT touched here — the server bumps them when it
+   * settles the booking, so an unpaid booking can never consume a limited slot.
    */
+  const handlePaid = (booking: Booking) => {
+    setBookingDefaultDate(null);
+    setPaidBooking(booking);
+    setSelectedIds([]);
+  };
+
   const handleAwaitingConfirmation = (booking: AwaitingBooking) => {
     setBookingDefaultDate(null);
     setAwaitingBooking(booking);
@@ -499,11 +698,14 @@ function SevasContent() {
           selectedSevas={selectedSevas as unknown as Seva[]}
           defaultDate={bookingDefaultDate}
           onClose={() => setBookingDefaultDate(null)}
+          onPaid={handlePaid}
           onAwaitingConfirmation={handleAwaitingConfirmation}
         />
       )}
 
-      {/* Awaiting Confirmation View (manual UPI) */}
+      {paidBooking && <SuccessView booking={paidBooking} onClose={() => setPaidBooking(null)} />}
+
+      {/* Paid, confirmation still on its way */}
       {awaitingBooking && (
         <AwaitingConfirmationView
           booking={awaitingBooking}

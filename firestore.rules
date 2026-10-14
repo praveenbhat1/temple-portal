@@ -42,9 +42,11 @@ service cloud.firestore {
     }
 
     match /bookings/{document=**} {
-      // Bookings are created ONLY by the server:
-      //   • /api/bookings/create  — manual UPI flow, written as `pending`
-      //   • /api/razorpay/verify  — after a gateway signature has been verified
+      // Bookings are written ONLY by the server:
+      //   • /api/bookings/create   — creates them `pending`, with a Razorpay order
+      //   • /api/razorpay/verify   — settles them after a signature check
+      //   • /api/razorpay/webhook  — the same, when the browser never returned
+      //   • /api/bookings/confirm  — an admin settling one by hand
       // The Admin SDK bypasses these rules, so denying every client write here
       // is what stops a visitor from forging a paid booking.
       allow create: if false;

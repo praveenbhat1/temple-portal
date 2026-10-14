@@ -1,12 +1,14 @@
 /**
  * Settling a booking — the one place a payment is marked received.
  *
- * Two callers reach this: an admin pressing "Mark paid" in /admin/bookings,
- * and the automatic reconciler in /api/reconcile. They must behave identically,
+ * Three callers reach this: an admin pressing "Mark paid" or "Reject" in
+ * /admin/bookings, and the two Razorpay paths — the checkout handler
+ * (/api/razorpay/verify) and the webhook. They must behave identically,
  * because the difference between them is only *who decided*, never *what
  * happens*. Keeping the transaction, the seva counters and the devotee's
- * message in one function is what stops the automatic path quietly diverging
- * from the manual one.
+ * message in one function is what stops the gateway path quietly diverging
+ * from the manual one, and what makes the checkout handler and the webhook
+ * safe to race: whichever arrives second finds the booking already settled.
  *
  * Server-side only: it writes with the Admin SDK, which bypasses security
  * rules entirely.
@@ -46,7 +48,7 @@ export type SettledBooking = {
  * Move a pending booking to success or failed, exactly once.
  *
  * The status flip happens inside a transaction, so two admins clicking at the
- * same moment — or an admin and the reconciler racing — cannot both win and
+ * same moment — or the checkout handler and the webhook racing — cannot both win and
  * double-count a seva. Everything with side effects (counters, messaging) runs
  * only for the caller that actually won.
  */
@@ -56,6 +58,8 @@ export async function settleBooking(opts: {
   by: SettledBy;
   /** The reference verified against the bank, when there is one. */
   upiRef?: string;
+  /** Extra fields written in the same update, e.g. the Razorpay payment id. */
+  fields?: Record<string, string>;
 }): Promise<SettleResult> {
   const db = adminDb();
   const ref = db.collection("bookings").doc(opts.id);
@@ -81,6 +85,7 @@ export async function settleBooking(opts: {
         confirmedBy: opts.by.kind === "admin" ? opts.by.email : `auto:${opts.by.source}`,
         confirmedAt: FieldValue.serverTimestamp(),
         ...(upiRef ? { upiRef } : {}),
+        ...opts.fields,
       });
 
       return data;
@@ -108,7 +113,7 @@ export async function settleBooking(opts: {
       totalAmount: booking.totalAmount || 0,
       eventDate: booking.eventDate || "",
       sevas: booking.sevas || [],
-      upiRef: upiRef || booking.upiRef,
+      upiRef: upiRef || opts.fields?.razorpayPaymentId || booking.upiRef,
     },
     opts.action === "confirm" ? "confirmed" : "rejected"
   ).catch((err) => {

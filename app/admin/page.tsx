@@ -332,7 +332,7 @@ function EmptyState({ icon, title, body }: { icon: React.ReactNode; title: strin
 /**
  * The loud version, shown only when something required is off.
  *
- * This exists because a missing TEMPLE_UPI_ID or FIREBASE_SERVICE_ACCOUNT takes
+ * This exists because missing Razorpay keys or FIREBASE_SERVICE_ACCOUNT take
  * bookings offline site-wide while every page still looks perfectly fine — the
  * devotee just gets "Online booking isn't switched on yet" and the temple has
  * no way to know why.
