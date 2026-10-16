@@ -33,6 +33,28 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import gsap from "gsap";
+import { haptic, soundUnlocked, strikeBell, unlockSound } from "@/lib/templeSound";
+import { festivalTheme } from "@/lib/templeCalendar";
+
+const SOUND_PREF_KEY = "svt-entrance-sound";
+/** When each bell reaches the end of its swing, in seconds — see .entrance-bell__swing. */
+const BELL_STRIKES: [at: number, hz: number][] = [
+  [0.85, 560],
+  [1.05, 470],
+  [1.5, 560],
+  [1.72, 470],
+];
+
+/** ?festival=ganesh|deepavali previews a decoration; otherwise the calendar decides. */
+function currentFestival(): "ganesh" | "deepavali" | null {
+  try {
+    const forced = new URLSearchParams(window.location.search).get("festival");
+    if (forced === "ganesh" || forced === "deepavali") return forced;
+  } catch {
+    /* no window */
+  }
+  return festivalTheme();
+}
 
 export const ENTRANCE_SESSION_KEY = "svt-entrance-seen";
 
@@ -94,6 +116,10 @@ export default function TempleEntrance() {
 
   const timers = useRef<number[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [soundOn, setSoundOn] = useState(false);
+  const soundOnRef = useRef(false);
+  // Read once on the client; the overlay never renders on the server.
+  const [festival] = useState(() => (typeof window === "undefined" ? null : currentFestival()));
   const timeline = useRef<gsap.core.Timeline | null>(null);
 
   const finish = useCallback(() => {
@@ -160,7 +186,15 @@ export default function TempleEntrance() {
         // Camera: a slight pull back as the doors give, then the dolly in
         // through the doorway once they are open.
         .to(".entrance-camera", { scale: 1.03, duration: 1.4, ease: "sine.inOut" }, 0.2)
-        .to(".entrance-camera", { scale: 1.17, y: "-1.5%", duration: 2.8, ease: "power2.inOut" }, 1.7);
+        .to(".entrance-camera", { scale: 1.17, y: "-1.5%", duration: 2.8, ease: "power2.inOut" }, 1.7)
+        // A light buzz on the push and as the doors swing (Android, after a tap).
+        .call(() => soundOnRef.current && haptic(12), [], 1.0)
+        .call(() => soundOnRef.current && haptic([10, 60, 18]), [], 1.6);
+
+      // Bells sound only once the visitor has turned sound on.
+      for (const [at, hz] of BELL_STRIKES) {
+        tl.call(() => soundOnRef.current && strikeBell(hz), [], at);
+      }
 
       timeline.current = tl;
     }, rootRef);
@@ -170,6 +204,45 @@ export default function TempleEntrance() {
       ctx.revert();
     };
   }, [shouldPlay]);
+
+  // A returning visitor who turned sound on before: try to resume quietly.
+  // Without a tap this usually stays suspended, and the button remains.
+  useEffect(() => {
+    if (!shouldPlay) return;
+    try {
+      if (localStorage.getItem(SOUND_PREF_KEY) !== "1") return;
+    } catch {
+      return;
+    }
+    unlockSound().then((ok) => {
+      if (ok && soundUnlocked()) {
+        soundOnRef.current = true;
+        setSoundOn(true);
+      }
+    });
+  }, [shouldPlay]);
+
+  const toggleSound = async () => {
+    if (soundOnRef.current) {
+      soundOnRef.current = false;
+      setSoundOn(false);
+      try {
+        localStorage.setItem(SOUND_PREF_KEY, "0");
+      } catch {}
+      return;
+    }
+    const ok = await unlockSound();
+    if (!ok) return;
+    soundOnRef.current = true;
+    setSoundOn(true);
+    try {
+      localStorage.setItem(SOUND_PREF_KEY, "1");
+    } catch {}
+    // Turned on after the bells already swung: one soft strike, so the tap
+    // is answered rather than met with silence.
+    const t = timeline.current?.time() ?? 0;
+    if (t > BELL_STRIKES[BELL_STRIKES.length - 1][0]) strikeBell(560, 0, 0.7);
+  };
 
   // Lock scrolling and let any interaction skip ahead.
   useEffect(() => {
@@ -252,9 +325,30 @@ export default function TempleEntrance() {
         {/* Seam of light between the doors, before they part. */}
         <div className="entrance-seam" />
 
+        {festival === "ganesh" && <Toran />}
+        {festival === "deepavali" && <Diyas />}
+
         {/* Cinematic vignette over everything. */}
         <div className="entrance-vignette" />
       </div>
+
+      {/* Its own pointer/touch handling stops the event reaching the window
+          listeners that skip the ceremony. */}
+      <button
+        type="button"
+        className="entrance-sound"
+        aria-pressed={soundOn}
+        aria-label={soundOn ? "Turn bell sound off" : "Turn bell sound on"}
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleSound();
+        }}
+      >
+        <SpeakerIcon on={soundOn} />
+        {soundOn ? "Sound on" : "Sound"}
+      </button>
 
       <button className="entrance-skip" onClick={finish} tabIndex={-1}>
         Skip
@@ -393,6 +487,97 @@ function DoorCarving() {
         ))}
       </div>
       <div className="entrance-door__handle" />
+    </div>
+  );
+}
+
+function SpeakerIcon({ on }: { on: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 5 6 9H2v6h4l5 4V5z" />
+      {on ? (
+        <>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+        </>
+      ) : (
+        <path d="m16 9 5 6m0-6-5 6" />
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Ganeshotsava toran: two swags of marigolds across the doors with mango
+ * leaves hanging between. SVG, so it stays crisp and weighs a few hundred
+ * bytes. Phones get their own drawing with fewer, larger flowers — the wide
+ * one squeezed into 390px reads as a row of dots.
+ */
+function Toran() {
+  return (
+    <div className="entrance-toran" aria-hidden="true">
+      <ToranSvg width={420} count={11} r={17} className="md:hidden" />
+      <ToranSvg width={1000} count={23} r={15} className="hidden md:block" />
+    </div>
+  );
+}
+
+function ToranSvg({ width, count, r, className }: { width: number; count: number; r: number; className: string }) {
+  const half = (count - 1) / 2;
+  const flowers = Array.from({ length: count }, (_, i) => {
+    const x = r + (i / (count - 1)) * (width - 2 * r);
+    // Two swags meeting at the centre, each dipping lowest in its middle.
+    const phase = i <= half ? i / half : (i - half) / half;
+    const y = r + 4 + 44 * Math.sin(phase * Math.PI);
+    return { x, y, fill: i % 3 === 0 ? `url(#marigold-yellow-${width})` : `url(#marigold-orange-${width})` };
+  });
+  return (
+    <svg viewBox={`0 0 ${width} 130`} preserveAspectRatio="xMidYMin meet" className={className}>
+      <defs>
+        {/* One gradient per colour (a shared one cannot take each flower's
+            colour), and ids unique per drawing: url(#id) resolves to the first
+            match in the page, and a gradient inside the display:none phone
+            drawing paints nothing on desktop. */}
+        <radialGradient id={`marigold-orange-${width}`} cx="38%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="#ffe8b0" />
+          <stop offset="45%" stopColor="#f97316" />
+          <stop offset="100%" stopColor="#9a3412" />
+        </radialGradient>
+        <radialGradient id={`marigold-yellow-${width}`} cx="38%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="#fff7d1" />
+          <stop offset="45%" stopColor="#fbbf24" />
+          <stop offset="100%" stopColor="#b45309" />
+        </radialGradient>
+      </defs>
+      <path
+        d={flowers.map((f, i) => `${i ? "L" : "M"}${f.x} ${f.y}`).join(" ")}
+        stroke="#7c2d12"
+        strokeWidth="2"
+        fill="none"
+        opacity="0.6"
+      />
+      {flowers.map((f, i) => (
+        <g key={i}>
+          {i % 2 === 1 && <path d={`M${f.x} ${f.y + r * 0.6} q -${r * 0.6} ${r * 1.5} 0 ${r * 3} q ${r * 0.6} -${r * 1.4} 0 -${r * 3}z`} fill="#4d7c0f" />}
+          <circle cx={f.x} cy={f.y} r={r} fill={f.fill} />
+          <circle cx={f.x} cy={f.y} r={r * 0.32} fill="#7c2d12" opacity="0.35" />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** Deepavali: a row of lit diyas along the threshold, flames catching in turn. */
+function Diyas() {
+  return (
+    <div className="entrance-diyas" aria-hidden="true">
+      {Array.from({ length: 7 }, (_, i) => (
+        <span
+          key={i}
+          className="entrance-diya"
+          style={{ "--diya-delay": `${250 + Math.abs(3 - i) * 140}ms` } as React.CSSProperties}
+        />
+      ))}
     </div>
   );
 }

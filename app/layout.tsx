@@ -23,6 +23,10 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  // The manifest is what lets the site be added to a phone's Home Screen —
+  // and on iPhone, web push only works for a site installed that way.
+  manifest: "/manifest.json",
+  appleWebApp: { capable: true, title: "Vinayaka Temple", statusBarStyle: "default" },
   title: "Sunkadakatte Sri Vinayaka Temple | Spiritual Grace & Tradition",
   description:
     "Official website of Sunkadakatte Sri Vinayaka Temple, Kallianpur Main Road, near Santhekatte, Udupi. Book sevas online, pay by UPI, see darshan timings and temple news.",

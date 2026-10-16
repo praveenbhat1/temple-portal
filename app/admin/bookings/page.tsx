@@ -19,6 +19,7 @@ import { getBookings, Booking, isAbandoned } from "@/lib/firestore";
 import { auth } from "@/lib/firebase";
 import { generatePremiumReceipt } from "@/lib/receipt";
 import { bookingMessage, whatsappLink, prettyDate } from "@/lib/messages";
+import { sankalpaLine } from "@/lib/sankalpa";
 import {
   Search,
   Calendar,
@@ -239,6 +240,9 @@ function AdminBookings() {
       "Booked on",
       "Seva date",
       "Status",
+      "Nakshatra",
+      "Rashi",
+      "Gotra",
       "Razorpay payment",
       "Verified ref",
       "Devotee ref",
@@ -254,6 +258,9 @@ function AdminBookings() {
       b.bookingDate || "",
       b.eventDate || "",
       b.paymentStatus,
+      b.nakshatra || "",
+      b.rashi || "",
+      b.gotra || "",
       b.razorpayPaymentId || "",
       b.upiRef || "",
       b.devoteeUpiRef || "",
@@ -670,6 +677,9 @@ function BookingRow({
             <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
               <Phone size={10} /> {booking.phone}
             </p>
+            {sankalpaLine(booking) && (
+              <p className="text-[10px] text-saffron-800/80 mt-0.5">{sankalpaLine(booking)}</p>
+            )}
           </div>
         </div>
       </td>
@@ -809,6 +819,9 @@ function BookingCard({
           >
             <Phone size={10} /> {booking.phone}
           </a>
+          {sankalpaLine(booking) && (
+            <p className="text-[10px] text-saffron-800/80 mt-1">{sankalpaLine(booking)}</p>
+          )}
         </div>
         <StatusPill status={booking.paymentStatus} abandoned={isAbandoned(booking)} />
       </div>
@@ -936,6 +949,9 @@ function SettleDialog({
           <Row label="Reference" value={booking.bookingId} mono />
           <Row label="Amount" value={`₹${(booking.totalAmount || 0).toLocaleString("en-IN")}`} />
           <Row label="Seva date" value={prettyDate(booking.eventDate)} />
+          {booking.nakshatra && <Row label="Nakshatra" value={booking.nakshatra} />}
+          {booking.rashi && <Row label="Rashi" value={booking.rashi} />}
+          {booking.gotra && <Row label="Gotra" value={booking.gotra} />}
           {booking.devoteeUpiRef && (
             <Row label="Devotee says they paid with" value={booking.devoteeUpiRef} mono />
           )}

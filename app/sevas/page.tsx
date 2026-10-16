@@ -2,13 +2,16 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { subscribeSevas, createBooking, verifyPayment, Seva, Booking, BookingOrder } from "@/lib/firestore";
-import { Calendar, User, Phone, X, ShoppingBag, Download, Mail, Heart, ArrowRight, Smartphone, Clock3, CheckCircle2 } from "lucide-react";
+import { Calendar, User, Phone, X, ShoppingBag, Download, Mail, Heart, ArrowRight, Smartphone, Clock3, CheckCircle2, ChevronDown, CalendarDays } from "lucide-react";
 import SevaBoard from "@/components/SevaBoard";
 import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
 import { generateBookingAcknowledgement, generatePremiumReceipt } from "@/lib/receipt";
 import { checkoutConfig, loadRazorpay } from "@/lib/razorpayCheckout";
+import { eventOn } from "@/lib/templeCalendar";
+import { prettyDate } from "@/lib/messages";
+import { NAKSHATRAS, RASHIS, SANKALPA_MIN_PRICE, cleanSankalpa, offersSankalpa } from "@/lib/sankalpa";
 
 function todayISO() {
   return new Date().toISOString().split("T")[0];
@@ -30,7 +33,18 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
   const totalAmount = selectedSevas.reduce((acc, s) => acc + s.price, 0);
   // defaultDate is computed by the caller's click handler, so today's date never
   // has to be read during render or patched in from an effect.
-  const [form, setForm] = useState({ userName: "", phone: "", email: "", eventDate: defaultDate });
+  const [form, setForm] = useState({
+    userName: "",
+    phone: "",
+    email: "",
+    eventDate: defaultDate,
+    nakshatra: "",
+    rashi: "",
+    gotra: "",
+  });
+  /** Nakshatra, rashi and gotra are offered only for sevas of ₹1,000 and up. */
+  const showSankalpa = offersSankalpa(selectedSevas);
+  const sankalpa = showSankalpa ? cleanSankalpa(form) : { nakshatra: "", rashi: "", gotra: "" };
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   /**
@@ -83,7 +97,14 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
       config: checkoutConfig(current.razorpayKeyId),
       theme: { color: "#9a3412" },
       handler: async (response) => {
-        const base = { userName: form.userName, phone, eventDate: form.eventDate };
+        const base = {
+          userName: form.userName,
+          phone,
+          eventDate: form.eventDate,
+          ...(sankalpa.nakshatra && { nakshatra: sankalpa.nakshatra }),
+          ...(sankalpa.rashi && { rashi: sankalpa.rashi }),
+          ...(sankalpa.gotra && { gotra: sankalpa.gotra }),
+        };
         try {
           await verifyPayment({ id: current.id, ...response });
           onPaid({
@@ -142,6 +163,7 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
         email: form.email.trim() || undefined,
         sevaIds: selectedSevas.map((s) => s.id!),
         eventDate: form.eventDate,
+        ...(showSankalpa && sankalpa),
       });
       setOrder(created);
       await openCheckout(created, valid.phone);
@@ -266,6 +288,69 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
               />
             </div>
           </div>
+
+          {showSankalpa && (
+            <div className="rounded-2xl border border-saffron-100 bg-saffron-50/40 p-4 md:p-5 space-y-4">
+              <div>
+                <p className="text-sm font-bold text-gray-900">
+                  Sankalpa details <span className="font-medium text-gray-500">(optional)</span>
+                </p>
+                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  For sevas of ₹{SANKALPA_MIN_PRICE.toLocaleString("en-IN")} and above, the priest can recite your
+                  nakshatra, rashi and gotra during the seva.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="bk-nakshatra" className={LABEL}>Nakshatra</label>
+                  <div className="relative">
+                    <select
+                      id="bk-nakshatra"
+                      value={form.nakshatra}
+                      onChange={(e) => setForm({ ...form, nakshatra: e.target.value })}
+                      className={`${INPUT} pl-4 pr-10 appearance-none min-h-[3.25rem]`}
+                    >
+                      <option value="">Select nakshatra</option>
+                      {NAKSHATRAS.map((n) => (
+                        <option key={n.en} value={n.en}>{n.en} · {n.kn}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="bk-rashi" className={LABEL}>Rashi</label>
+                  <div className="relative">
+                    <select
+                      id="bk-rashi"
+                      value={form.rashi}
+                      onChange={(e) => setForm({ ...form, rashi: e.target.value })}
+                      className={`${INPUT} pl-4 pr-10 appearance-none min-h-[3.25rem]`}
+                    >
+                      <option value="">Select rashi</option>
+                      {RASHIS.map((r) => (
+                        <option key={r.en} value={r.en}>{r.en} · {r.kn}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="bk-gotra" className={LABEL}>Gotra</label>
+                <input
+                  id="bk-gotra"
+                  type="text"
+                  autoCapitalize="words"
+                  maxLength={40}
+                  value={form.gotra}
+                  onChange={(e) => setForm({ ...form, gotra: e.target.value })}
+                  placeholder="e.g. Kashyapa"
+                  className={`${INPUT} pl-4`}
+                />
+              </div>
+            </div>
+          )}
         </fieldset>
 
         {error && (
@@ -517,6 +602,11 @@ function SuccessView({ booking, onClose }: { booking: Booking; onClose: () => vo
 function SevasContent() {
   const searchParams = useSearchParams();
   const preselect = searchParams.get("book");
+  // ?date=YYYY-MM-DD from the seva calendar: the booking form opens on that
+  // day. Ignored if malformed or already past.
+  const dateParam = searchParams.get("date") || "";
+  const presetDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && dateParam >= todayISO() ? dateParam : null;
+  const presetEvent = presetDate ? eventOn(presetDate) : undefined;
 
   const [extraSevas, setExtraSevas] = useState<Seva[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -538,7 +628,10 @@ function SevasContent() {
       // it on every update would re-select something the devotee removed.
       if (firstLoad) {
         firstLoad = false;
-        if (preselect && data.some((s) => s.id === preselect)) {
+        // Static board sevas count too — most calendar links point at them,
+        // and they have no Firestore document unless an admin edited one.
+        const live = data.find((s) => s.id === preselect);
+        if (preselect && (live ? live.isActive !== false : ALL_SEVAS.some((s) => s.id === preselect))) {
           setSelectedIds([preselect]);
         }
       }
@@ -593,6 +686,18 @@ function SevasContent() {
 
   return (
     <div className="bg-cream pt-28 md:pt-32 pb-32 md:pb-40 min-h-screen">
+      {presetDate && (
+        <div className="max-w-3xl mx-auto px-4 md:px-6 mb-8">
+          <div className="bg-white border border-saffron-200 rounded-2xl px-5 py-4 flex items-center gap-3 shadow-sm">
+            <CalendarDays size={20} className="text-saffron-600 shrink-0" />
+            <p className="text-sm text-gray-700 leading-snug">
+              Booking for <span className="font-bold text-gray-900">{prettyDate(presetDate)}</span>
+              {presetEvent && <> · {presetEvent.subtitle ?? presetEvent.title}</>}. Choose your sevas below.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="max-w-4xl mx-auto px-6 text-center mb-10 md:mb-24 animate-fade-in">
         <div className="flex items-center justify-center gap-3 text-saffron-600 mb-6">
@@ -667,7 +772,7 @@ function SevasContent() {
                 Clear
               </button>
               <button
-                onClick={() => setBookingDefaultDate(todayISO())}
+                onClick={() => setBookingDefaultDate(presetDate ?? todayISO())}
                 className="bg-saffron-600 hover:bg-saffron-500 active:bg-saffron-500 text-white px-5 py-3 md:px-10 md:py-4 rounded-full font-bold transition-all shadow-xl shadow-saffron-900/40 flex items-center justify-center gap-2 md:gap-3 whitespace-nowrap group"
               >
                 <span className="md:hidden">Book Now</span>

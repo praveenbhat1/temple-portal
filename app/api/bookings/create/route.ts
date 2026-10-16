@@ -5,6 +5,7 @@ import { createOrder, isRazorpayConfigured, razorpayKeyId, RazorpayError } from 
 import { ALL_SEVAS } from "@/lib/sevaData";
 import { isValidIndianPhone, normalizePhone } from "@/lib/utils";
 import { check, clientIp, tooManyRequests } from "@/lib/rateLimit";
+import { cleanSankalpa, offersSankalpa } from "@/lib/sankalpa";
 
 /**
  * Create a *pending* booking and the Razorpay order the devotee pays it with.
@@ -25,6 +26,9 @@ type CreateBody = {
   email?: string;
   sevaIds?: string[];
   eventDate?: string;
+  nakshatra?: unknown;
+  rashi?: unknown;
+  gotra?: unknown;
 };
 
 const MAX_SEVAS_PER_BOOKING = 20;
@@ -160,6 +164,9 @@ export async function POST(req: Request) {
       );
     }
 
+    // Only stored for bookings that actually offered the fields.
+    const sankalpa = offersSankalpa(sevas) ? cleanSankalpa(body) : { nakshatra: "", rashi: "", gotra: "" };
+
     const bookingId = generateBookingId();
     // The document id is chosen up front so the order's notes can carry it —
     // that is how the webhook finds this booking without a query.
@@ -179,6 +186,9 @@ export async function POST(req: Request) {
       totalAmount,
       bookingDate: todayISO(),
       eventDate,
+      ...(sankalpa.nakshatra && { nakshatra: sankalpa.nakshatra }),
+      ...(sankalpa.rashi && { rashi: sankalpa.rashi }),
+      ...(sankalpa.gotra && { gotra: sankalpa.gotra }),
       paymentStatus: "pending" as const,
       paymentMethod: "razorpay" as const,
       razorpayOrderId: order.id,

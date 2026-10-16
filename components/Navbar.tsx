@@ -10,6 +10,7 @@ import { checkAdminStatus } from "@/lib/auth";
 const NAV_LINKS = [
   { name: "Home", href: "/" },
   { name: "Sevas", href: "/sevas" },
+  { name: "Calendar", href: "/calendar" },
   { name: "Track Seva", href: "/track-booking" },
   { name: "Gallery", href: "/gallery" },
   { name: "Announcements", href: "/announcements" },

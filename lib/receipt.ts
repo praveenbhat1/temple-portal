@@ -4,6 +4,7 @@ import { UserOptions } from "jspdf-autotable";
 import { Booking } from "./firestore";
 import { prettyDate } from "./messages";
 import { TEMPLE_LOGO_JPEG } from "./templeLogo";
+import { sankalpaLine } from "./sankalpa";
 
 /** Where the temple actually is. Was two versions out of date on the receipt. */
 const TEMPLE_ADDRESS = "Kallianpur Main Road, near Santhekatte, Udupi, Karnataka - 576115";
@@ -141,6 +142,13 @@ export const generatePremiumReceipt = (booking: Booking) => {
     y += 5;
     doc.setTextColor(...INK);
     doc.text(`Email  ${booking.email}`, M, y);
+  }
+
+  const sankalpa = sankalpaLine(booking);
+  if (sankalpa) {
+    y += 5;
+    doc.setTextColor(...INK);
+    doc.text(sankalpa, M, y);
   }
 
   // ── Sevas ───────────────────────────────────────────────────────────────

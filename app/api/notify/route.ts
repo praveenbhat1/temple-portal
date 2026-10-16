@@ -58,10 +58,12 @@ export async function POST(req: Request) {
     for (let i = 0; i < tokens.length; i += MAX_TOKENS_PER_BATCH) {
       const batch = tokens.slice(i, i + MAX_TOKENS_PER_BATCH);
 
+      // Data-only on purpose. With a `notification` block the Firebase SDK
+      // shows the alert itself AND onBackgroundMessage in the service worker
+      // shows it again, so every devotee got each announcement twice. The
+      // service worker is now the one place a notification is drawn.
       const response = await messaging.sendEachForMulticast({
         tokens: batch,
-        notification: { title, body: message },
-        // Data is what the service worker reads for tag/click-through.
         data: {
           title,
           body: message,
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
           url: body.url || "/announcements",
         },
         webpush: {
-          notification: { icon: "/icon-192.png", badge: "/icon-192.png" },
+          headers: { Urgency: "high", TTL: String(3 * 24 * 60 * 60) },
           fcmOptions: { link: body.url || "/announcements" },
         },
       });

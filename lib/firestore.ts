@@ -53,6 +53,10 @@ export interface Booking {
   phone: string;
   email?: string;
   sevas: BookingSeva[];
+  /** Optional sankalpa details, offered for sevas of ₹1,000 and above. */
+  nakshatra?: string;
+  rashi?: string;
+  gotra?: string;
   totalAmount: number;
   /** Date the user submitted the booking (today's date) */
   bookingDate: string;
@@ -295,6 +299,9 @@ export async function createBooking(payload: {
   email?: string;
   sevaIds: string[];
   eventDate: string;
+  nakshatra?: string;
+  rashi?: string;
+  gotra?: string;
 }): Promise<BookingOrder> {
   const res = await fetch("/api/bookings/create", {
     method: "POST",

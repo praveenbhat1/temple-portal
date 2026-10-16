@@ -801,6 +801,95 @@ html.entrance-active body {
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
+/* Sound is opt-in (browsers block audio until a tap), so it gets its own
+   quiet control beside Skip. Tapping it does NOT skip the ceremony. */
+.entrance-sound {
+  position: absolute;
+  bottom: clamp(18px, 4vh, 44px);
+  left: clamp(16px, 4vw, 40px);
+  z-index: 21;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 40px;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(253, 224, 130, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(253, 224, 130, 0.7);
+  cursor: pointer;
+  opacity: 0;
+  animation: entranceSkipIn 600ms 500ms ease-out forwards;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.entrance-sound[aria-pressed="true"] {
+  color: rgba(255, 245, 210, 0.95);
+  border-color: rgba(253, 224, 130, 0.55);
+  background: rgba(120, 53, 15, 0.45);
+}
+
+/* ── Festival dressing ─────────────────────────────────────────────────────
+   Ganeshotsava: a marigold toran swagged across the top of the doors.
+   Deepavali: a row of diyas along the threshold. Both ride the camera, so
+   they move with the scene rather than floating over it. */
+.entrance-toran {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: clamp(70px, 13vw, 130px);
+  z-index: 9;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+  opacity: 0;
+  animation: entranceSkipIn 900ms 150ms ease-out forwards;
+}
+.entrance-toran svg { width: 100%; height: 100%; }
+
+.entrance-diyas {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: clamp(56px, 10vh, 96px);
+  z-index: 9;
+  display: flex;
+  justify-content: space-evenly;
+  pointer-events: none;
+}
+.entrance-diya {
+  position: relative;
+  width: clamp(26px, 4.4vw, 46px);
+  height: clamp(12px, 2vw, 20px);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  background: linear-gradient(to bottom, #c2410c, #7c2d12);
+  box-shadow: 0 0 22px 6px rgba(251, 146, 60, 0.25);
+}
+.entrance-diya::after {
+  content: "";
+  position: absolute;
+  /* Centred with left/width rather than translate: the flicker keyframes
+     own `transform`, and would otherwise knock the flame off-centre. */
+  left: 33%;
+  bottom: 85%;
+  width: 34%;
+  height: 160%;
+  transform-origin: 50% 100%;
+  border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+  background: radial-gradient(ellipse at 50% 75%, #fff7d6 0%, #fde047 35%, #f97316 75%, transparent 80%);
+  filter: blur(0.4px);
+  opacity: 0;
+  animation:
+    entranceFlameOn 500ms ease-out forwards,
+    entranceFlicker 1500ms ease-in-out infinite;
+  animation-delay: var(--diya-delay, 300ms), calc(var(--diya-delay, 300ms) + 500ms);
+}
+
 .entrance-skip:hover {
   color: rgba(255, 245, 210, 0.95);
   border-color: rgba(253, 224, 130, 0.5);
