@@ -27,7 +27,7 @@ const RATE_WINDOW_MS = 5 * 60 * 1000;
 type BookingRow = Record<string, unknown> & { id: string };
 
 export async function POST(req: Request) {
-  const limit = check(`booking-lookup:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const limit = await check(`booking-lookup:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
   if (!limit.ok) {
     return tooManyRequests(limit, "Too many searches. Please wait a few minutes and try again.");
   }
@@ -94,7 +94,10 @@ export async function POST(req: Request) {
       .limit(MAX_RESULTS)
       .get();
 
-    const rows = serialise(byPhone.docs, { mask: false }).sort((a, b) =>
+    // Masked too. This route is unauthenticated, so anyone can type in any
+    // number; returning that devotee's full phone and email would make it a
+    // reverse lookup for other people's contact details.
+    const rows = serialise(byPhone.docs, { mask: true }).sort((a, b) =>
       String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))
     );
 
@@ -137,6 +140,10 @@ function serialise(
     delete safe.confirmedBy;
     delete safe.confirmedAt;
     delete safe.adminNote;
+    delete safe.razorpayOrderId;
+    delete safe.devoteeUpiRef;
+    delete safe.needsManualMatch;
+    delete safe.devoteeMarkedPaidAt;
 
     return {
       ...safe,

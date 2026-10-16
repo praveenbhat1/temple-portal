@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb, FieldValue, isAdminConfigured } from "@/lib/firebaseAdmin";
+import { check, clientIp, tooManyRequests } from "@/lib/rateLimit";
 
 /**
  * Store a devotee's FCM token so the temple can push updates to them.
@@ -9,6 +10,11 @@ import { adminDb, FieldValue, isAdminConfigured } from "@/lib/firebaseAdmin";
  * time a devotee clicked "Receive Temple Alerts".
  */
 export async function POST(req: Request) {
+  // Each call writes a document; without a limit a script could fill the
+  // collection and the temple's Firestore bill.
+  const limit = await check(`fcm-subscribe:${clientIp(req)}`, 10, 60 * 60 * 1000);
+  if (!limit.ok) return tooManyRequests(limit, "Too many attempts. Please try again later.");
+
   if (!isAdminConfigured()) {
     return NextResponse.json(
       {
@@ -50,6 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Failed to store FCM token:", err);
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    // Internal error text stays in the logs, not in the response.
+    return NextResponse.json({ error: "Could not subscribe right now." }, { status: 500 });
   }
 }

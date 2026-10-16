@@ -16,6 +16,7 @@ import {
   subscribeGalleryImages,
   getBookings,
   Booking,
+  isAbandoned,
 } from "@/lib/firestore";
 import {
   ScrollText,
@@ -111,7 +112,8 @@ export default function AdminDashboard() {
   const monthStart = monthStartISO();
 
   const confirmed = bookings.filter((b) => b.paymentStatus === "success");
-  const pending = bookings.filter((b) => b.paymentStatus === "pending");
+  // Abandoned checkouts are not work for anyone; leave them out of the queue.
+  const pending = bookings.filter((b) => b.paymentStatus === "pending" && !isAbandoned(b));
 
   // Only money the temple has actually seen counts as revenue.
   const revenueThisMonth = confirmed
@@ -128,7 +130,7 @@ export default function AdminDashboard() {
     {
       label: "Awaiting payment",
       value: pending.length,
-      caption: pending.length ? "Needs your confirmation" : "Nothing waiting",
+      caption: pending.length ? "Checkout in progress" : "Nothing waiting",
       icon: Clock,
       tone: pending.length ? "amber" : "gray",
       href: "/admin/bookings?status=pending",
@@ -173,7 +175,7 @@ export default function AdminDashboard() {
         <h1 className="text-2xl md:text-3xl font-serif text-gray-900">Temple Overview</h1>
         <p className="text-sm text-gray-500 mt-1">
           {pending.length > 0
-            ? `${pending.length} booking${pending.length > 1 ? "s are" : " is"} waiting for you to confirm payment.`
+            ? `${pending.length} devotee${pending.length > 1 ? "s are" : " is"} in the middle of paying. Razorpay confirms these on its own.`
             : "Everything is confirmed. Nothing needs your attention right now."}
         </p>
       </header>

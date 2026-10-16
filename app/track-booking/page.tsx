@@ -96,7 +96,7 @@ export default function TrackBookingPage() {
         <div className="space-y-6 animate-fade-in" style={{ animationDelay: '0.4s' }}>
           {results === null ? (
             <div className="text-center py-20 opacity-20">
-              <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={100} height={100} className="mx-auto grayscale" />
+              <Image src="/ganapathi-logo-sm.jpg" alt="Ganesh" width={100} height={100} className="mx-auto grayscale" />
             </div>
           ) : results.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-12 text-center border border-saffron-100 shadow-sm">

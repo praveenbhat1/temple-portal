@@ -126,7 +126,7 @@ export default function Navbar() {
         <Link href="/" className="flex items-center gap-3 group">
           <div className="relative w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-md border border-gray-100 group-hover:scale-110 transition-transform duration-300">
             <img 
-              src="/ganapathi-logo.jpg" 
+              src="/ganapathi-logo-sm.jpg" 
               alt="Ganapathi Logo" 
               className="w-full h-full object-contain p-1"
             />
@@ -190,7 +190,7 @@ export default function Navbar() {
       <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-20">
         <button 
           onClick={() => setIsOpen(false)}
-          className="flex items-center gap-2 text-saffron-700 font-sans text-sm font-bold uppercase tracking-widest hover:text-saffron-800 transition-colors"
+          className="flex items-center gap-2 -ml-2 px-2 py-3 text-saffron-700 font-sans text-sm font-bold uppercase tracking-widest hover:text-saffron-800 transition-colors"
         >
           <ArrowLeft size={20} />
           Back

@@ -28,7 +28,7 @@ type VerifyBody = {
 };
 
 export async function POST(req: Request) {
-  const limit = check(`razorpay-verify:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const limit = await check(`razorpay-verify:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
   if (!limit.ok) {
     return tooManyRequests(limit, "Too many attempts. Please wait a few minutes and try again.");
   }

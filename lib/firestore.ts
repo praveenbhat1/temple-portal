@@ -361,6 +361,27 @@ export async function verifyPayment(payload: {
   }
 }
 
+/**
+ * How long an unpaid booking counts as "awaiting payment". Every checkout a
+ * devotee opens and closes leaves a pending booking behind; after this long
+ * nobody is coming back to pay it, so the admin stops being asked about it.
+ */
+export const ABANDON_AFTER_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Pending, and old enough that nobody is coming back to pay it.
+ *
+ * Display-only on purpose: the booking stays `pending` in the database, so a
+ * payment that does arrive late (the webhook) still confirms it normally.
+ */
+export function isAbandoned(b: Pick<Booking, "paymentStatus" | "createdAt" | "bookingDate">, now = Date.now()): boolean {
+  if (b.paymentStatus !== "pending") return false;
+  const created = b.createdAt?.toMillis?.();
+  if (created) return now - created > ABANDON_AFTER_MS;
+  // Very old records may lack createdAt; anything from before today qualifies.
+  return Boolean(b.bookingDate) && b.bookingDate < new Date(now).toISOString().split("T")[0];
+}
+
 export async function getBookings(): Promise<Booking[]> {
   try {
     // Read unordered and sort here rather than with orderBy("createdAt").
@@ -493,3 +514,48 @@ export async function deleteGalleryImage(id: string) {
 
 // Seva booking counters are incremented server-side in /api/bookings/confirm
 // with FieldValue.increment(), so a devotee's browser can never inflate them.
+
+// ─── Donations ────────────────────────────────────────────────────────────────
+
+/** What /api/donations/create hands back so the donor can pay. */
+export interface DonationOrder {
+  id: string;
+  donationId: string;
+  amount: number;
+  purpose: string;
+  razorpayOrderId: string;
+  razorpayKeyId: string;
+}
+
+async function postJson<T>(url: string, payload: unknown, fallback: string): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+  if (!res.ok) {
+    console.warn(`${url} failed (HTTP ${res.status}): ${result.reason ?? "unknown"}`);
+    throw new Error(result.error || fallback);
+  }
+  return result as T;
+}
+
+export function createDonation(payload: {
+  donorName: string;
+  phone: string;
+  email?: string;
+  amount: number;
+  purpose: string;
+}): Promise<DonationOrder> {
+  return postJson("/api/donations/create", payload, "Could not start the donation. Please try again.");
+}
+
+export async function verifyDonation(payload: {
+  id: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}): Promise<void> {
+  await postJson("/api/donations/verify", payload, "Your donation could not be confirmed yet.");
+}

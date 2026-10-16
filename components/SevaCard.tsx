@@ -103,7 +103,7 @@ export default function SevaCard({ seva, selected, onToggle }: Props) {
         <span className={`text-[10px] uppercase tracking-[0.2em] font-bold ${isSpecial ? 'text-gold-700' : 'text-saffron-700'}`}>
           {isSpecial ? "Divine Special" : "Sacred Offering"}
         </span>
-        {isSpecial && <img src="/ganapathi-logo-bw.png" alt="Ganesh" className="w-5 h-5 opacity-40 object-contain" />}
+        {isSpecial && <img src="/ganapathi-logo-bw-sm.png" alt="Ganesh" className="w-5 h-5 opacity-40 object-contain" />}
       </div>
 
       <div className="flex-1">

@@ -45,9 +45,12 @@ export default function AboutPage() {
           </div>
           <div className="order-1 lg:order-2 flex justify-center lg:justify-end">
             <div className="relative w-full max-w-[500px] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border-4 md:border-8 border-white group">
-              <img
+              <Image
                 src="/about-legacy.jpg"
                 alt="Temple History"
+                width={638}
+                height={1024}
+                sizes="(min-width: 640px) 500px, 92vw"
                 className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
               />
             </div>
@@ -61,9 +64,12 @@ export default function AboutPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-16 items-center">
           <div className="relative flex justify-center lg:justify-start">
             <div className="relative w-full max-w-[500px] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border-4 md:border-8 border-white group">
-              <img
+              <Image
                 src="/about-significance.jpg"
                 alt="Temple Significance"
+                width={768}
+                height={1024}
+                sizes="(min-width: 640px) 500px, 92vw"
                 className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
               />
             </div>
@@ -95,7 +101,7 @@ export default function AboutPage() {
           <div className="text-center mb-12 md:mb-16">
             <div className="flex justify-center mb-6">
               <div className="w-16 h-16 bg-saffron-50 rounded-full flex items-center justify-center p-3 border border-saffron-100 shadow-sm">
-                <img src="/ganapathi-logo.jpg" alt="Ganesh Logo" className="w-10 h-10 object-contain" />
+                <img src="/ganapathi-logo-sm.jpg" alt="Ganesh Logo" className="w-10 h-10 object-contain" />
               </div>
             </div>
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-serif text-foreground mb-4">
@@ -170,10 +176,12 @@ export default function AboutPage() {
               ].map((trustee, i) => (
                 <div key={i} className="flex flex-col sm:flex-row items-center sm:items-start gap-6 bg-white/5 p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
                   <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-saffron-100/10 flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-saffron-600/30 group-hover:border-saffron-600 transition-colors relative">
-                    <img
+                    <Image
                       src={trustee.image}
                       alt={trustee.name}
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="96px"
+                      className="object-cover"
                     />
                   </div>
                   <div className="text-center sm:text-left">
@@ -192,10 +200,12 @@ export default function AboutPage() {
           <div className="absolute top-0 left-0 w-full h-full bg-[url('/paper-texture.png')] opacity-10" />
           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8 md:gap-16">
             <div className="w-32 h-32 md:w-48 md:h-48 rounded-full bg-saffron-100/10 flex-shrink-0 flex items-center justify-center overflow-hidden border-4 border-gold-600/30 shadow-[0_0_50px_rgba(249,115,22,0.3)] relative group">
-              <img 
-                src="/priest/manjunath-bhat.jpg" 
+              <Image
+                src="/priest/manjunath-bhat.jpg"
                 alt="Vedamurthy Manjunath Bhat"
-                className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                fill
+                sizes="(min-width: 768px) 192px, 128px"
+                className="object-cover transform group-hover:scale-110 transition-transform duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
             </div>
@@ -245,7 +255,7 @@ export default function AboutPage() {
 
       {/* Decorative Footer Element */}
       <div className="mt-20 md:mt-24 text-center opacity-[0.03]">
-        <Image src="/ganapathi-logo.jpg" alt="Ganesh" width={80} height={80} className="mx-auto" />
+        <Image src="/ganapathi-logo-sm.jpg" alt="Ganesh" width={80} height={80} className="mx-auto" />
       </div>
     </div>
   );

@@ -116,7 +116,8 @@ also offers a test card, since the desktop test QR cannot be paid — and
 Add a webhook (Dashboard → Webhooks): URL `https://<site>/api/razorpay/webhook`,
 event `payment.captured`, and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
 
-`TEMPLE_UPI_ID` is only for the open-amount donation QR on `/donate`.
+Donations on `/donate` go through the same Razorpay account (any amount, a
+receipt for the donor, and a donor list in `/admin/donations`).
 
 The temple's bank account lives in `lib/templeBank.ts` and is imported
 everywhere it is shown. Change it in that one file.

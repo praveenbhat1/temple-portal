@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminConfigured, verifyAdminRequest } from "@/lib/firebaseAdmin";
 import { isRazorpayConfigured, isRazorpayWebhookConfigured } from "@/lib/razorpay";
-import { isUpiConfigured } from "@/lib/upi";
 import { messagingStatus } from "@/lib/notify";
 
 /**
@@ -26,7 +25,6 @@ export async function GET(req: Request) {
   const serverConfigured = isAdminConfigured();
   const paymentsConfigured = isRazorpayConfigured();
   const webhookConfigured = isRazorpayWebhookConfigured();
-  const donationUpiConfigured = isUpiConfigured();
 
   const checks = [
     {
@@ -45,7 +43,7 @@ export async function GET(req: Request) {
       ok: paymentsConfigured,
       required: true,
       detail: paymentsConfigured
-        ? "Devotees pay by GPay, PhonePe or any UPI app through Razorpay, and bookings confirm themselves."
+        ? "Devotees pay for sevas and donations by GPay, PhonePe or any UPI app through Razorpay, and both confirm themselves."
         : "The Razorpay keys are not set, so no devotee can complete a booking.",
       fix: "Razorpay Dashboard → Account & Settings → API Keys → Generate key. Put the Key Id in NEXT_PUBLIC_RAZORPAY_KEY_ID and the Key Secret in RAZORPAY_KEY_SECRET.",
     },
@@ -58,16 +56,6 @@ export async function GET(req: Request) {
         ? "A devotee who pays and closes the tab still gets their booking confirmed."
         : "Not set up. If a devotee closes the page before checkout returns, their paid booking stays pending until you mark it paid by hand.",
       fix: "Razorpay Dashboard → Account & Settings → Webhooks → Add: URL https://<your-site>/api/razorpay/webhook, event payment.captured, and a secret. Put the same secret in RAZORPAY_WEBHOOK_SECRET.",
-    },
-    {
-      id: "donation-upi",
-      label: "Donation UPI id",
-      ok: donationUpiConfigured,
-      required: false,
-      detail: donationUpiConfigured
-        ? "The Donate page shows the temple's UPI id and QR."
-        : "Not set. The Donate page shows bank transfer details only.",
-      fix: "Set TEMPLE_UPI_ID to the temple's UPI id (for example temple@sbi), and TEMPLE_UPI_NAME to the name donors should see in their UPI app.",
     },
     {
       id: "whatsapp",
@@ -88,6 +76,16 @@ export async function GET(req: Request) {
         ? "SMS is available as a fallback for devotees without WhatsApp."
         : "Not set up. Optional fallback for devotees who don't use WhatsApp.",
       fix: "Optional. Set MSG91_AUTH_KEY (with MSG91_TEMPLATE_ID and MSG91_SENDER_ID) or FAST2SMS_API_KEY.",
+    },
+    {
+      id: "rate-limit",
+      label: "Spam protection",
+      ok: Boolean(process.env.UPSTASH_REDIS_REST_URL?.trim() && process.env.UPSTASH_REDIS_REST_TOKEN?.trim()),
+      required: false,
+      detail: process.env.UPSTASH_REDIS_REST_URL?.trim()
+        ? "Booking attempts are limited across every server instance."
+        : "Limits are counted per server instance, so a determined script can get around them.",
+      fix: "Create a free Redis database at upstash.com (Mumbai region) and set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
     },
     {
       id: "push",

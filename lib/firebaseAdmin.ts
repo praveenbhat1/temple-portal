@@ -98,7 +98,9 @@ export async function verifyAdminRequest(req: Request): Promise<string | null> {
   if (!match) return null;
 
   try {
-    const decoded = await adminAuth().verifyIdToken(match[1]);
+    // checkRevoked: removing an admin (or revoking their sessions in the
+    // console) takes effect at once instead of when their 1-hour token expires.
+    const decoded = await adminAuth().verifyIdToken(match[1], true);
     const email = decoded.email;
     if (!email) return null;
 

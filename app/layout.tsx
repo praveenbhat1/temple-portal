@@ -6,6 +6,8 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
+import { SITE_URL } from "@/lib/siteUrl";
+import { TEMPLE_CONTACT } from "@/lib/templeContact";
 
 const inter = Inter({ 
   variable: "--font-inter", 
@@ -20,10 +22,28 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Sunkadakatte Sri Vinayaka Temple | Spiritual Grace & Tradition",
   description:
-    "Official website of Sunkadakatte Sri Vinayaka Temple. Experience the divine blessings of Lord Ganesha through our handcrafted spiritual experience.",
-  keywords: ["Vinayaka Temple", "Sunkadakatte", "Ganesh temple", "online seva booking", "Karnataka temple"],
+    "Official website of Sunkadakatte Sri Vinayaka Temple, Kallianpur Main Road, near Santhekatte, Udupi. Book sevas online, pay by UPI, see darshan timings and temple news.",
+  keywords: [
+    "Sunkadakatte temple",
+    "Sunkadakatte Sri Vinayaka Temple",
+    "Vinayaka Temple Udupi",
+    "Santhekatte Ganapathi temple",
+    "Kallianpur temple",
+    "online seva booking",
+    "Ganesh temple Udupi",
+  ],
+  openGraph: {
+    type: "website",
+    siteName: "Sunkadakatte Sri Vinayaka Temple",
+    title: "Sunkadakatte Sri Vinayaka Temple",
+    description: "Book sevas online, pay by UPI, and follow temple news and darshan timings.",
+    url: "/",
+    locale: "en_IN",
+    images: [{ url: "/original-hero.jpg", width: 768, height: 1024, alt: "Lord Sri Vinayaka" }],
+  },
   // No `icons` block here on purpose. Next's file conventions —
   // app/icon.png and app/apple-icon.png — generate the correct <link> tags
   // with cache-busting hashes, and a manual entry here would override them.
@@ -83,6 +103,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: ENTRANCE_PREPAINT }}
         />
+        {/* Structured data: lets Google show the temple as a place, with its
+            address, phone and opening hours, rather than as a bare link. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(TEMPLE_JSON_LD) }}
+        />
         <ScrollReveal />
         <Navbar />
         <main className="min-h-screen">
@@ -93,3 +119,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
+const TEMPLE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "HinduTemple",
+  name: TEMPLE_CONTACT.name,
+  url: SITE_URL,
+  telephone: "+916361929580",
+  image: `${SITE_URL}/original-hero.jpg`,
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "Kallianpur Main Road, near Santhekatte",
+    addressLocality: "Udupi",
+    addressRegion: "Karnataka",
+    postalCode: "576115",
+    addressCountry: "IN",
+  },
+  openingHoursSpecification: [
+    { "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: "06:30", closes: "12:30" },
+    { "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: "17:30", closes: "20:30" },
+  ],
+};

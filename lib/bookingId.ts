@@ -20,3 +20,8 @@ export function generateBookingId(): string {
   for (const byte of bytes) out += ID_ALPHABET[byte % ID_ALPHABET.length];
   return `SV-${out}`;
 }
+
+/** Donation reference (e.g. DN-7KQM4P) — same alphabet, distinct prefix. */
+export function generateDonationId(): string {
+  return generateBookingId().replace(/^SV-/, "DN-");
+}

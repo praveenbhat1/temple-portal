@@ -443,7 +443,7 @@ export const generateBookingAcknowledgement = (booking: {
   doc.setTextColor(120, 83, 20);
   doc.text(
     doc.splitTextToSize(
-      "The temple office checks each payment against its bank statement. Once yours is traced, the seva is confirmed, you receive a message on the mobile number above, and your receipt becomes available on the Track Seva page using this reference.",
+      "Your payment is being confirmed with Razorpay, which normally takes a few minutes. Once it is, the seva is confirmed and your receipt becomes available on the Track Seva page using this reference. Please do not pay again.",
       W - M * 2 - 12
     ),
     M + 6,
@@ -472,6 +472,116 @@ export const generateBookingAcknowledgement = (booking: {
     fy + 4,
     { align: "center" }
   );
+
+  return doc;
+};
+
+/**
+ * Receipt for a donation that Razorpay has confirmed. Same frame and header as
+ * the seva receipt so the temple's documents look like one set.
+ */
+export const generateDonationReceipt = (donation: {
+  donationId: string;
+  donorName: string;
+  phone: string;
+  amount: number;
+  purpose: string;
+  razorpayPaymentId: string;
+  date: string;
+}) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 18;
+
+  const SAFFRON: [number, number, number] = [154, 52, 18];
+  const GOLD: [number, number, number] = [180, 140, 45];
+  const INK: [number, number, number] = [45, 36, 30];
+  const MUTED: [number, number, number] = [140, 132, 124];
+
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.8);
+  doc.rect(M - 6, M - 6, W - (M - 6) * 2, H - (M - 6) * 2);
+  doc.setLineWidth(0.2);
+  doc.rect(M - 4, M - 4, W - (M - 4) * 2, H - (M - 4) * 2);
+
+  let y = M + 6;
+  const LOGO = 17;
+  doc.addImage(TEMPLE_LOGO_JPEG, "JPEG", W / 2 - LOGO / 2, y - 2, LOGO, LOGO);
+  y += LOGO + 5;
+
+  doc.setFont("times", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...GOLD);
+  doc.text("SHREE", W / 2, y, { align: "center" });
+  y += 9;
+  doc.setFontSize(23);
+  doc.setTextColor(...SAFFRON);
+  doc.text("SRI VINAYAKA TEMPLE", W / 2, y, { align: "center" });
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...MUTED);
+  doc.text(TEMPLE_ADDRESS, W / 2, y, { align: "center" });
+
+  y += 16;
+  doc.setFillColor(255, 251, 240);
+  doc.setDrawColor(240, 210, 150);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(M, y - 7, W - M * 2, 13, 2, 2, "FD");
+  doc.setFont("times", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(...SAFFRON);
+  doc.text("DONATION RECEIPT", W / 2, y + 1, { align: "center" });
+
+  const row = (labelText: string, valueText: string, yy: number, mono = false) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(labelText, M + 4, yy);
+    doc.setFont(mono ? "courier" : "helvetica", mono ? "bold" : "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(valueText, W - M - 4, yy, { align: "right" });
+    doc.setDrawColor(232, 228, 222);
+    doc.setLineWidth(0.1);
+    doc.line(M, yy + 4, W - M, yy + 4);
+  };
+
+  y += 20;
+  row("RECEIPT NO.", donation.donationId, y, true);
+  row("DATE", prettyDate(donation.date), (y += 11));
+  row("RECEIVED FROM", donation.donorName.toUpperCase(), (y += 11));
+  row("MOBILE", donation.phone, (y += 11));
+  row("TOWARDS", donation.purpose, (y += 11));
+  row("PAYMENT", "UPI via Razorpay", (y += 11));
+  row("PAYMENT REFERENCE", donation.razorpayPaymentId, (y += 11), true);
+
+  y += 14;
+  doc.setFillColor(...SAFFRON);
+  doc.roundedRect(M, y, W - M * 2, 15, 1.5, 1.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(255, 245, 230);
+  doc.text("AMOUNT RECEIVED", M + 6, y + 9.5);
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.text(`Rs. ${donation.amount.toLocaleString("en-IN")}`, W - M - 6, y + 9.5, { align: "right" });
+
+  const fy = H - M - 12;
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.4);
+  doc.line(W / 2 - 26, fy - 8, W / 2 + 26, fy - 8);
+  doc.setFont("times", "italic");
+  doc.setFontSize(10);
+  doc.setTextColor(...SAFFRON);
+  doc.text("Thank you for your offering. May Lord Sri Vinayaka bless you.", W / 2, fy - 2, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text("Computer-generated receipt  ·  Sunkadakatte Sri Vinayaka Temple Administration", W / 2, fy + 4, {
+    align: "center",
+  });
 
   return doc;
 };

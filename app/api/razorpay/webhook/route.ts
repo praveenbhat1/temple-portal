@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { verifyWebhookSignature } from "@/lib/razorpay";
 import { settleBooking } from "@/lib/settleBooking";
+import { settleDonation } from "@/lib/donations";
 
 /**
  * Razorpay webhook — the recovery path for payments the browser never
@@ -58,6 +59,33 @@ export async function POST(req: Request) {
     });
     // A 5xx makes Razorpay retry later, by which time the server may be fixed.
     return NextResponse.json({ error: "Server not configured" }, { status: 500 });
+  }
+
+  // Donations share this webhook; their order notes say so.
+  if (payment.notes?.kind === "donation") {
+    const id = payment.notes.donationDocId || "";
+    try {
+      const result = id
+        ? await settleDonation({
+            id,
+            orderId: payment.order_id,
+            paymentId: payment.id,
+            amountPaise: payment.amount,
+            source: "razorpay-webhook",
+          })
+        : { ok: false, reason: "not_found" as const };
+      if (!result.ok && result.reason !== "already_settled") {
+        console.error("Captured donation could not be matched — check the Razorpay dashboard", {
+          paymentId: payment.id,
+          orderId: payment.order_id,
+          reason: result.reason,
+        });
+      }
+      return NextResponse.json({ ok: true, handled: result.ok ? "donation_settled" : result.reason });
+    } catch (err) {
+      console.error("Razorpay webhook (donation) failed:", err);
+      return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    }
   }
 
   try {

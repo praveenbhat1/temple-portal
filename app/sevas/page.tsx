@@ -8,88 +8,10 @@ import { ALL_SEVAS } from "@/lib/sevaData";
 import Link from "next/link";
 import { normalizePhone, isValidIndianPhone } from "@/lib/utils";
 import { generateBookingAcknowledgement, generatePremiumReceipt } from "@/lib/receipt";
+import { checkoutConfig, loadRazorpay } from "@/lib/razorpayCheckout";
 
 function todayISO() {
   return new Date().toISOString().split("T")[0];
-}
-
-// ─── Razorpay Checkout ────────────────────────────────────────────────────────
-
-type CheckoutResponse = {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-};
-
-/** Only the fields we actually pass to Razorpay Checkout. */
-interface RazorpayOptions {
-  key: string;
-  order_id: string;
-  name: string;
-  description: string;
-  handler: (response: CheckoutResponse) => void;
-  prefill?: { name?: string; contact?: string; email?: string };
-  notes?: Record<string, string>;
-  config?: unknown;
-  theme?: { color?: string };
-  modal?: { ondismiss?: () => void };
-}
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayOptions) => {
-      open: () => void;
-      on: (event: "payment.failed", handler: (r: { error?: { description?: string } }) => void) => void;
-    };
-  }
-}
-
-const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-
-/**
- * Resolve once the checkout script is genuinely ready. Using window.Razorpay
- * before the script finished loading is what used to make checkout silently
- * fail to open on a slow connection.
- */
-function loadRazorpay(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) return resolve();
-
-    const existing = document.getElementById("razorpay-script") as HTMLScriptElement | null;
-    const script = existing ?? document.createElement("script");
-    script.addEventListener("load", () => (window.Razorpay ? resolve() : reject(new Error("no_global"))), { once: true });
-    script.addEventListener("error", () => reject(new Error("script_blocked")), { once: true });
-    if (!existing) {
-      script.id = "razorpay-script";
-      script.src = RAZORPAY_SRC;
-      script.async = true;
-      document.body.appendChild(script);
-    }
-    window.setTimeout(() => reject(new Error("script_timeout")), 15000);
-  });
-}
-
-/**
- * Show only UPI in the checkout — GPay, PhonePe, Paytm, any UPI app, or a QR
- * on desktop. Cards and netbanking are hidden here; switch them off in the
- * Razorpay dashboard too, since this only governs what the checkout displays.
- *
- * With test keys a card is offered as well. Desktop test checkout shows only a
- * UPI QR, which no real app can pay, so without the test card there is no way
- * to complete a payment end to end. Verification is the same for every method.
- */
-function checkoutConfig(keyId: string) {
-  const testMode = keyId.startsWith("rzp_test_");
-  return {
-    display: {
-      blocks: {
-        upi: { name: "Pay with UPI", instruments: [{ method: "upi" }] },
-        ...(testMode && { card: { name: "Test card", instruments: [{ method: "card" }] } }),
-      },
-      sequence: testMode ? ["block.upi", "block.card"] : ["block.upi"],
-      preferences: { show_default_blocks: false },
-    },
-  };
 }
 
 // ─── Unified Booking Form ─────────────────────────────────────────────────────
@@ -368,8 +290,10 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
               </>
             )}
           </button>
-          <p className="text-[11px] text-gray-400 text-center mt-2">
-            Secure UPI payment by Razorpay · GPay, PhonePe, Paytm and more
+          <p className="text-[11px] text-gray-500 text-center mt-2 leading-relaxed">
+            Secure UPI payment by Razorpay. By paying you agree to our{" "}
+            <Link href="/terms" target="_blank" className="underline underline-offset-2">Terms</Link> and{" "}
+            <Link href="/refund-policy" target="_blank" className="underline underline-offset-2">Refund Policy</Link>.
           </p>
         </div>
       </form>

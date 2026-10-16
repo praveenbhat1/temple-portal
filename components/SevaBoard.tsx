@@ -86,7 +86,7 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
         <div className="flex items-center justify-center gap-3 md:gap-4 md:mb-2">
           {/* shrink-0: without it the long title squeezed the logo into a sliver on phones. */}
           <div className="w-11 h-11 md:w-12 md:h-12 shrink-0 bg-white rounded-full flex items-center justify-center p-1 relative overflow-hidden shadow-sm">
-             <img src="/ganapathi-logo.jpg" alt="Logo" className="w-full h-full object-contain p-1" />
+             <img src="/ganapathi-logo-sm.jpg" alt="Logo" className="w-full h-full object-contain p-1" />
           </div>
           <div className="text-left min-w-0">
             <h1 className="text-lg md:text-2xl font-serif font-bold tracking-wide leading-snug">Sunkadakatte Shri Vinayaka Temple</h1>

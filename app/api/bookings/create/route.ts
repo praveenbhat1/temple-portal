@@ -49,7 +49,7 @@ const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: Request) {
-  const limit = check(`booking-create:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const limit = await check(`booking-create:${clientIp(req)}`, RATE_LIMIT, RATE_WINDOW_MS);
   if (!limit.ok) {
     return tooManyRequests(
       limit,

@@ -108,7 +108,7 @@ export default function NotificationButton() {
         {state === "loading" ? "Invoking updates…" : "Receive Temple Alerts"}
       </span>
       <div className="opacity-0 group-hover:opacity-100 transition-all -translate-y-2 group-hover:translate-y-0 flex items-center shrink-0">
-        <img src="/ganapathi-logo-bw.png" alt="" className="w-3.5 h-3.5" />
+        <img src="/ganapathi-logo-bw-sm.png" alt="" className="w-3.5 h-3.5" />
       </div>
     </button>
   );

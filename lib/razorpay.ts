@@ -30,12 +30,14 @@ export function razorpayKeyId(): string {
 }
 
 export class RazorpayError extends Error {
-  constructor(
-    message: string,
-    /** HTTP status Razorpay answered with; 401 means the key pair is wrong. */
-    readonly statusCode?: number
-  ) {
+  /** HTTP status Razorpay answered with; 401 means the key pair is wrong. */
+  readonly statusCode?: number;
+
+  // Written out rather than as a parameter property so the file also runs
+  // under Node's type-stripping test runner.
+  constructor(message: string, statusCode?: number) {
     super(message);
+    this.statusCode = statusCode;
   }
 }
 

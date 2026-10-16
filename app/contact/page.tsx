@@ -1,4 +1,4 @@
-import { MapPin, Phone, Mail, Clock, MessageCircle } from "lucide-react";
+import { MapPin, Phone, Clock, MessageCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function ContactPage() {
@@ -22,7 +22,7 @@ export default function ContactPage() {
           <div className="bg-white border border-saffron-100 rounded-[2.5rem] p-8 md:p-12 shadow-sm">
             <h2 className="text-2xl md:text-3xl font-serif text-gray-900 mb-8 flex items-center gap-3">
               <div className="w-10 h-10 bg-saffron-50 rounded-xl flex items-center justify-center text-saffron-600">
-                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6 object-contain" />
+                <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="w-6 h-6 object-contain" />
               </div>
               Temple Details
             </h2>
@@ -49,16 +49,6 @@ export default function ContactPage() {
                   <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">Contact</h4>
                   <a href="tel:+916361929580" className="text-sm md:text-base text-gray-700 font-sans hover:text-saffron-600 transition-colors">+91 6361 929 580</a>
                   <p className="text-[11px] text-gray-400 mt-1">Mon - Sun (9 AM - 6 PM)</p>
-                </div>
-              </div>
-
-              <div className="flex gap-5">
-                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-saffron-600 shrink-0">
-                  <Mail size={20} />
-                </div>
-                <div>
-                  <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">Email</h4>
-                  <p className="text-sm md:text-base text-gray-700 font-sans">info@srivinayakatemple.org</p>
                 </div>
               </div>
 

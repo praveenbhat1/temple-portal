@@ -31,11 +31,13 @@ import {
   Menu,
   X,
   ExternalLink,
+  HeartHandshake,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/bookings", label: "Bookings", icon: BookOpen },
+  { href: "/admin/donations", label: "Donations", icon: HeartHandshake },
   { href: "/admin/sevas", label: "Sevas", icon: ScrollText },
   { href: "/admin/announcements", label: "Announcements", icon: Bell },
   { href: "/admin/gallery", label: "Gallery", icon: ImageIcon },

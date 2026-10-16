@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { getBookings, Booking } from "@/lib/firestore";
+import { getBookings, Booking, isAbandoned } from "@/lib/firestore";
 import { auth } from "@/lib/firebase";
 import { generatePremiumReceipt } from "@/lib/receipt";
 import { bookingMessage, whatsappLink, prettyDate } from "@/lib/messages";
@@ -143,7 +143,14 @@ function AdminBookings() {
         b.upiRef?.toLowerCase().includes(term) ||
         b.devoteeUpiRef?.toLowerCase().includes(term);
 
-      const matchesStatus = statusFilter === "all" || b.paymentStatus === statusFilter;
+      // "All" leaves abandoned checkouts out; they have their own filter.
+      const abandoned = isAbandoned(b);
+      const matchesStatus =
+        statusFilter === "abandoned"
+          ? abandoned
+          : statusFilter === "all"
+            ? !abandoned
+            : b.paymentStatus === statusFilter && !abandoned;
 
       const basis = (dateBasis === "eventDate" ? b.eventDate : b.bookingDate) || "";
       const matchesFrom = !fromDate || basis >= fromDate;
@@ -162,7 +169,7 @@ function AdminBookings() {
       .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
     return {
       count: filtered.length,
-      pending: filtered.filter((b) => b.paymentStatus === "pending").length,
+      pending: filtered.filter((b) => b.paymentStatus === "pending" && !isAbandoned(b)).length,
       confirmedValue,
     };
   }, [filtered]);
@@ -332,10 +339,11 @@ function AdminBookings() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className={`${INPUT} pl-4 pr-9 appearance-none cursor-pointer`}
             >
-              <option value="all">All statuses</option>
+              <option value="all">All (except abandoned)</option>
               <option value="pending">Awaiting payment</option>
               <option value="success">Confirmed</option>
               <option value="failed">Rejected</option>
+              <option value="abandoned">Abandoned checkouts</option>
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
           </Field>
@@ -545,7 +553,17 @@ function setRange(
   setTo(end.toISOString().split("T")[0]);
 }
 
-function StatusPill({ status }: { status: Booking["paymentStatus"] }) {
+function StatusPill({ status, abandoned = false }: { status: Booking["paymentStatus"]; abandoned?: boolean }) {
+  if (abandoned) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 bg-gray-50 text-gray-500 px-2.5 py-1 rounded-full text-[10px] font-bold border border-gray-200 whitespace-nowrap"
+        title="Checkout was opened but never paid. A late payment still confirms it automatically."
+      >
+        <Clock size={11} /> Abandoned
+      </span>
+    );
+  }
   if (status === "success") {
     return (
       <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-2.5 py-1 rounded-full text-[10px] font-bold border border-green-100 whitespace-nowrap">
@@ -686,7 +704,7 @@ function BookingRow({
       </td>
 
       <td className="px-4 py-5">
-        <StatusPill status={booking.paymentStatus} />
+        <StatusPill status={booking.paymentStatus} abandoned={isAbandoned(booking)} />
       </td>
 
       <td className="px-6 py-5">
@@ -792,7 +810,7 @@ function BookingCard({
             <Phone size={10} /> {booking.phone}
           </a>
         </div>
-        <StatusPill status={booking.paymentStatus} />
+        <StatusPill status={booking.paymentStatus} abandoned={isAbandoned(booking)} />
       </div>
 
       <div className="flex flex-wrap gap-1">

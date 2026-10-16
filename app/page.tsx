@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { subscribeSevas, subscribeAnnouncements, Seva, Announcement } from "@/lib/firestore";
@@ -43,15 +44,18 @@ export default function Home() {
             <div className="relative w-full max-w-[320px] md:max-w-[460px] aspect-[4/5]">
               <div className="absolute inset-0 bg-gold-400/20 blur-[60px] md:blur-[100px] rounded-full -z-10 animate-pulse" />
               <div className="relative w-full h-full rounded-t-full rounded-b-[3rem] md:rounded-b-[4rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)] md:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border-[10px] md:border-[16px] border-[#2d241e]">
-                <img 
-                  src="/original-hero.jpg" 
-                  alt="Lord Vinayaka" 
-                  className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-1000"
+                <Image
+                  src="/original-hero.jpg"
+                  alt="Lord Vinayaka"
+                  fill
+                  priority
+                  sizes="(min-width: 768px) 460px, 320px"
+                  className="object-cover transform hover:scale-105 transition-transform duration-1000"
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/30 pointer-events-none" />
               </div>
               <div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center p-2 border border-gray-100 animate-bounce" style={{ animationDuration: '3s' }}>
-                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-8 h-8 object-contain" />
+                <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="w-8 h-8 object-contain" />
               </div>
             </div>
           </div>
@@ -97,7 +101,7 @@ export default function Home() {
           {[
             { icon: <MapPin size={24} />, title: "Kallianpur Main Road, Udupi", sub: "Sacred Abode" },
             { icon: <Clock size={24} />, title: "6:30 AM – 12:30 PM & 5:30 PM – 8:30 PM", sub: "Darshan Timings" },
-            { icon: <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-6 h-6" />, title: "Daily Aarti", sub: "Sacred Offerings" }
+            { icon: <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="w-6 h-6" />, title: "Daily Aarti", sub: "Sacred Offerings" }
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-5 group justify-center md:justify-start">
               <div className="w-14 h-14 bg-saffron-50 rounded-2xl flex items-center justify-center text-vermillion group-hover:scale-110 transition-transform shadow-sm">
@@ -160,7 +164,7 @@ export default function Home() {
                 </Link>
               </div>
               <div className="w-full lg:w-1/3 aspect-square relative rounded-[2.5rem] md:rounded-[3rem] overflow-hidden bg-saffron-50/50 flex items-center justify-center border border-saffron-100">
-                <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-[120px] h-[120px] opacity-20 object-contain" />
+                <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="w-[120px] h-[120px] opacity-20 object-contain" />
               </div>
             </div>
           </div>

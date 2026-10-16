@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { subscribeGalleryImages, GalleryImage } from "@/lib/firestore";
 import { Camera, Download } from "lucide-react";
@@ -53,36 +54,44 @@ export default function GalleryPage() {
       {/* Grid Layout */}
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         {loading ? (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 md:gap-6 space-y-4 md:space-y-6">
+          <div className="columns-2 lg:columns-3 gap-3 md:gap-6 space-y-3 md:space-y-6">
             {Array(6).fill(0).map((_, i) => (
               <div key={i} className="bg-white/50 animate-pulse rounded-[1.5rem] md:rounded-[2rem] aspect-[3/4] border border-saffron-100/50" />
             ))}
           </div>
         ) : images.length === 0 ? (
           <div className="text-center py-24 text-gray-400 bg-white rounded-[2rem] md:rounded-[3rem] border border-saffron-100">
-            <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto mb-4 opacity-20 w-12 h-12" />
+            <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="mx-auto mb-4 opacity-20 w-12 h-12" />
             <p className="font-serif text-lg md:text-xl">The gallery is being curated...</p>
           </div>
         ) : (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 md:gap-6 space-y-4 md:space-y-6">
+          <div className="columns-2 lg:columns-3 gap-3 md:gap-6 space-y-3 md:space-y-6">
             {images.map((img) => (
               <div 
                 key={img.id} 
-                className="group relative overflow-hidden rounded-[1.5rem] md:rounded-[2rem] border-2 md:border-4 border-white shadow-lg bg-white break-inside-avoid"
+                className="group relative overflow-hidden rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-white shadow-lg bg-white break-inside-avoid"
               >
                 <div className="relative aspect-auto">
-                  <img
+                  <Image
                     src={img.imageUrl}
                     alt="Temple Gallery Image"
+                    // Intrinsic size is unknown for uploads; h-auto keeps each
+                    // photo's real shape once it loads. Hosts outside the
+                    // next.config allow-list are served as-is rather than
+                    // throwing, so an odd URL can never break the gallery.
+                    width={800}
+                    height={1000}
+                    sizes="(min-width: 1024px) 33vw, 50vw"
+                    unoptimized={!isOptimizableHost(img.imageUrl)}
                     className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
-                    loading="lazy"
                   />
                   
                   {/* Download Button Overlay */}
-                  <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="absolute top-2 right-2 md:top-4 md:right-4 z-10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
                     <button
                       onClick={() => handleDownload(img.imageUrl, img.id!)}
-                      className="bg-white/90 backdrop-blur-sm p-3 rounded-full text-gray-900 shadow-xl hover:bg-saffron-600 hover:text-white transition-all transform active:scale-90"
+                      aria-label="Download image"
+                      className="bg-white/90 backdrop-blur-sm p-2.5 md:p-3 rounded-full text-gray-900 shadow-xl hover:bg-saffron-600 hover:text-white transition-all transform active:scale-90"
                       title="Download Image"
                     >
                       <Download size={18} />
@@ -92,7 +101,7 @@ export default function GalleryPage() {
                   {/* Soft Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-6">
                     <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                      <img src="/ganapathi-logo.jpg" alt="Ganesh" className="w-4 h-4 invert brightness-0" /> 
+                      <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="w-4 h-4 invert brightness-0" /> 
                       Divine Moment
                     </span>
                   </div>
@@ -105,8 +114,18 @@ export default function GalleryPage() {
 
       {/* Decorative Footer Element */}
       <div className="mt-20 md:mt-24 text-center opacity-[0.03]">
-        <img src="/ganapathi-logo.jpg" alt="Ganesh" className="mx-auto w-20 h-20" />
+        <img src="/ganapathi-logo-sm.jpg" alt="Ganesh" className="mx-auto w-20 h-20" />
       </div>
     </div>
   );
+}
+
+const OPTIMIZABLE_HOSTS = ["res.cloudinary.com", "firebasestorage.googleapis.com"];
+
+function isOptimizableHost(url: string): boolean {
+  try {
+    return OPTIMIZABLE_HOSTS.includes(new URL(url).hostname);
+  } catch {
+    return false;
+  }
 }

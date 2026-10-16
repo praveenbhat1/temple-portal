@@ -6,12 +6,15 @@
  * per call, and /api/bookings/lookup is an oracle for guessing booking
  * references. Neither had a limit.
  *
- * The store is a Map in the server process, which has one real consequence:
- * on serverless (Vercel) each instance keeps its own counter, so a burst spread
- * across cold starts gets a fresh allowance. That is fine for what this is —
- * it stops the loop-from-one-laptop case, which is the realistic threat for a
- * temple site, and it costs nothing. If the site ever needs a hard guarantee,
- * swap the Map for Upstash Redis behind the same `check()` signature.
+ * Counters live in Upstash Redis when UPSTASH_REDIS_REST_URL and
+ * UPSTASH_REDIS_REST_TOKEN are set. That matters on Vercel: each serverless
+ * instance has its own memory, so an in-process Map gives every cold start a
+ * fresh allowance and barely limits anything. With Redis every instance shares
+ * one counter.
+ *
+ * Without those variables — local development, or if Redis is unreachable —
+ * it falls back to the in-memory Map. A Redis outage therefore weakens the
+ * limit rather than taking bookings offline.
  */
 
 type Bucket = { count: number; resetAt: number };
@@ -41,7 +44,50 @@ export interface RateLimitResult {
  * @param limit   Calls permitted per window.
  * @param windowMs Window length in milliseconds.
  */
-export function check(key: string, limit: number, windowMs: number): RateLimitResult {
+export async function check(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+  const shared = await checkRedis(key, limit, windowMs);
+  return shared ?? checkMemory(key, limit, windowMs);
+}
+
+/**
+ * Fixed-window counter in Upstash over its REST API: INCR the key, set its
+ * expiry only when the key is new (NX), and read the remaining TTL — one
+ * round trip. Returns null when Redis is not configured or fails.
+ */
+async function checkRedis(key: string, limit: number, windowMs: number): Promise<RateLimitResult | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (!url || !token) return null;
+
+  const redisKey = `rl:${key}`;
+  try {
+    const res = await fetch(`${url}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify([
+        ["INCR", redisKey],
+        ["PEXPIRE", redisKey, String(windowMs), "NX"],
+        ["PTTL", redisKey],
+      ]),
+      cache: "no-store",
+      // A slow Redis must not hold a devotee's booking hostage.
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const [incr, , pttl] = (await res.json()) as { result?: number }[];
+    const count = Number(incr?.result);
+    if (!Number.isFinite(count)) throw new Error("unexpected response");
+    const ttl = Math.max(0, Number(pttl?.result) || windowMs);
+    return count > limit
+      ? { ok: false, remaining: 0, retryAfter: Math.ceil(ttl / 1000) }
+      : { ok: true, remaining: limit - count, retryAfter: 0 };
+  } catch (err) {
+    console.error("Rate limit store unavailable, using in-memory fallback:", (err as Error).message);
+    return null;
+  }
+}
+
+function checkMemory(key: string, limit: number, windowMs: number): RateLimitResult {
   const now = Date.now();
   sweep(now);
 
