@@ -119,8 +119,8 @@ event `payment.captured`, and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
 Donations on `/donate` go through the same Razorpay account (any amount, a
 receipt for the donor, and a donor list in `/admin/donations`).
 
-The temple's bank account lives in `lib/templeBank.ts` and is imported
-everywhere it is shown. Change it in that one file.
+All payments — sevas and donations — go through Razorpay. The site shows no
+bank account details, so every rupee arrives with a name, a receipt and a record.
 
 ### 6. Check your work
 
@@ -190,7 +190,8 @@ lib/
   notify.ts                   WhatsApp / SMS providers            — server only
   rateLimit.ts                In-memory throttling for public routes
   receipt.ts                  Receipt and booking-acknowledgement PDFs
-  templeBank.ts               The temple's bank account — single source of truth
+  templeContact.ts            Address, phone, WhatsApp — single source of truth
+  donations.ts                Donation settle logic              — server only
   sevaData.ts                 The printed seva board
   auth.ts  bookingId.ts  fcm.ts  utils.ts
 ```

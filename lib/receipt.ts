@@ -2,7 +2,6 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { UserOptions } from "jspdf-autotable";
 import { Booking } from "./firestore";
-import { TEMPLE_BANK_LINE } from "./templeBank";
 import { prettyDate } from "./messages";
 import { TEMPLE_LOGO_JPEG } from "./templeLogo";
 
@@ -23,7 +22,8 @@ function paymentMethodLabel(booking: Booking, isSuccess: boolean): string {
   if (booking.razorpayPaymentId) return "Via UPI (Razorpay Secure Checkout)";
   // Legacy: the old pay-by-UPI-link flow, or a booking marked paid by hand.
   if (booking.paymentMethod === "upi-manual") return "Via UPI, verified by the temple office";
-  return `Received by the temple (${TEMPLE_BANK_LINE})`;
+  // Marked paid by an admin in /admin/bookings, e.g. paid at the counter.
+  return "Received at the temple office";
 }
 
 /**

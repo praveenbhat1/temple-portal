@@ -3,7 +3,6 @@ import React from 'react';
 import { Check } from "lucide-react";
 import { SEVA_DATA, SevaGroup, ALL_SEVAS } from "@/lib/sevaData";
 import { Seva, getSevaAvailability } from "@/lib/firestore";
-import { TEMPLE_BANK, TEMPLE_BANK_LINE } from "@/lib/templeBank";
 
 interface Props {
   selectedIds: string[];
@@ -226,11 +225,11 @@ export default function SevaBoard({ selectedIds, onToggle, extraSevas }: Props) 
       <div className="p-5 md:p-8 bg-gray-50 border-t border-gray-200 text-xs md:text-[11px] text-gray-600 md:text-gray-500 leading-relaxed space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-8">
           <div className="space-y-2">
-            <h4 className="font-bold text-gray-700 uppercase tracking-wider">Bank Account Details:</h4>
+            <h4 className="font-bold text-gray-700 uppercase tracking-wider">How to Pay</h4>
             <p>
-              <span className="font-medium text-gray-600">Account Name:</span> {TEMPLE_BANK.accountName} <br />
-              <span className="font-medium text-gray-600">Account No.:</span> {TEMPLE_BANK.accountNumber} <br />
-              <span className="font-medium text-gray-600">Bank:</span> {TEMPLE_BANK_LINE} (IFSC: {TEMPLE_BANK.ifsc})
+              Select your sevas above and tap <span className="font-medium text-gray-700">Book</span>. Payment is by
+              UPI — GPay, PhonePe, Paytm or any UPI app — through Razorpay, and your receipt is ready as soon as
+              you pay.
             </p>
           </div>
           <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-xl">
