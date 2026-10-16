@@ -5,7 +5,7 @@
  * The sequence, as a piece of film:
  *
  *   0.0s  darkness, a vignette, two oil lamps catch
- *   0.6s  the brass bells swing and ring, light seeping through the door seam
+ *   0.6s  the brass bells swing, light seeping through the door seam
  *   1.0s  the doors give a first push inward, then hold for a breath
  *   1.3s  the carved doors swing open, INTO the sanctum, darkening as they
  *         turn from the light; their edges catch the lamplight
@@ -33,17 +33,7 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import gsap from "gsap";
-import { haptic, soundUnlocked, strikeBell, unlockSound } from "@/lib/templeSound";
 import { festivalTheme } from "@/lib/templeCalendar";
-
-const SOUND_PREF_KEY = "svt-entrance-sound";
-/** When each bell reaches the end of its swing, in seconds — see .entrance-bell__swing. */
-const BELL_STRIKES: [at: number, hz: number][] = [
-  [0.85, 560],
-  [1.05, 470],
-  [1.5, 560],
-  [1.72, 470],
-];
 
 /** ?festival=ganesh|deepavali previews a decoration; otherwise the calendar decides. */
 function currentFestival(): "ganesh" | "deepavali" | null {
@@ -116,8 +106,6 @@ export default function TempleEntrance() {
 
   const timers = useRef<number[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [soundOn, setSoundOn] = useState(false);
-  const soundOnRef = useRef(false);
   // Read once on the client; the overlay never renders on the server.
   const [festival] = useState(() => (typeof window === "undefined" ? null : currentFestival()));
   const timeline = useRef<gsap.core.Timeline | null>(null);
@@ -186,15 +174,7 @@ export default function TempleEntrance() {
         // Camera: a slight pull back as the doors give, then the dolly in
         // through the doorway once they are open.
         .to(".entrance-camera", { scale: 1.03, duration: 1.4, ease: "sine.inOut" }, 0.2)
-        .to(".entrance-camera", { scale: 1.17, y: "-1.5%", duration: 2.8, ease: "power2.inOut" }, 1.7)
-        // A light buzz on the push and as the doors swing (Android, after a tap).
-        .call(() => soundOnRef.current && haptic(12), [], 1.0)
-        .call(() => soundOnRef.current && haptic([10, 60, 18]), [], 1.6);
-
-      // Bells sound only once the visitor has turned sound on.
-      for (const [at, hz] of BELL_STRIKES) {
-        tl.call(() => soundOnRef.current && strikeBell(hz), [], at);
-      }
+        .to(".entrance-camera", { scale: 1.17, y: "-1.5%", duration: 2.8, ease: "power2.inOut" }, 1.7);
 
       timeline.current = tl;
     }, rootRef);
@@ -204,45 +184,6 @@ export default function TempleEntrance() {
       ctx.revert();
     };
   }, [shouldPlay]);
-
-  // A returning visitor who turned sound on before: try to resume quietly.
-  // Without a tap this usually stays suspended, and the button remains.
-  useEffect(() => {
-    if (!shouldPlay) return;
-    try {
-      if (localStorage.getItem(SOUND_PREF_KEY) !== "1") return;
-    } catch {
-      return;
-    }
-    unlockSound().then((ok) => {
-      if (ok && soundUnlocked()) {
-        soundOnRef.current = true;
-        setSoundOn(true);
-      }
-    });
-  }, [shouldPlay]);
-
-  const toggleSound = async () => {
-    if (soundOnRef.current) {
-      soundOnRef.current = false;
-      setSoundOn(false);
-      try {
-        localStorage.setItem(SOUND_PREF_KEY, "0");
-      } catch {}
-      return;
-    }
-    const ok = await unlockSound();
-    if (!ok) return;
-    soundOnRef.current = true;
-    setSoundOn(true);
-    try {
-      localStorage.setItem(SOUND_PREF_KEY, "1");
-    } catch {}
-    // Turned on after the bells already swung: one soft strike, so the tap
-    // is answered rather than met with silence.
-    const t = timeline.current?.time() ?? 0;
-    if (t > BELL_STRIKES[BELL_STRIKES.length - 1][0]) strikeBell(560, 0, 0.7);
-  };
 
   // Lock scrolling and let any interaction skip ahead.
   useEffect(() => {
@@ -310,45 +251,29 @@ export default function TempleEntrance() {
         <Bell side="left" />
         <Bell side="right" />
 
-        {/* ── The carved doors ── */}
-        <div className="entrance-door entrance-door--left">
-          <DoorCarving />
-          <span className="entrance-door__shade" />
-          <span className="entrance-door__rim" />
-        </div>
-        <div className="entrance-door entrance-door--right">
-          <DoorCarving />
-          <span className="entrance-door__shade" />
-          <span className="entrance-door__rim" />
+        {/* ── The temple's carved doorway: photo frame in front, leaves behind ── */}
+        <div className="entrance-portal">
+          <div className="entrance-door entrance-door--left">
+            <span className="entrance-door__shade" />
+            <span className="entrance-door__rim" />
+          </div>
+          <div className="entrance-door entrance-door--right">
+            <span className="entrance-door__shade" />
+            <span className="entrance-door__rim" />
+          </div>
+          <div className="entrance-portal__frame" />
+
+          {/* Seam of light between the doors, before they part. */}
+          <div className="entrance-seam" />
+
+          {festival === "ganesh" && <Toran />}
         </div>
 
-        {/* Seam of light between the doors, before they part. */}
-        <div className="entrance-seam" />
-
-        {festival === "ganesh" && <Toran />}
         {festival === "deepavali" && <Diyas />}
 
         {/* Cinematic vignette over everything. */}
         <div className="entrance-vignette" />
       </div>
-
-      {/* Its own pointer/touch handling stops the event reaching the window
-          listeners that skip the ceremony. */}
-      <button
-        type="button"
-        className="entrance-sound"
-        aria-pressed={soundOn}
-        aria-label={soundOn ? "Turn bell sound off" : "Turn bell sound on"}
-        onPointerDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleSound();
-        }}
-      >
-        <SpeakerIcon on={soundOn} />
-        {soundOn ? "Sound on" : "Sound"}
-      </button>
 
       <button className="entrance-skip" onClick={finish} tabIndex={-1}>
         Skip
@@ -471,53 +396,15 @@ function Bell({ side }: { side: "left" | "right" }) {
   );
 }
 
-/** Carved panelling, brass studs and a ring handle for one door leaf. */
-function DoorCarving() {
-  return (
-    <div className="entrance-door__face">
-      <div className="entrance-door__panel entrance-door__panel--upper">
-        <span className="entrance-door__motif">ॐ</span>
-      </div>
-      <div className="entrance-door__panel entrance-door__panel--lower">
-        <span className="entrance-door__lotus" />
-      </div>
-      <div className="entrance-door__studs">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <span key={i} />
-        ))}
-      </div>
-      <div className="entrance-door__handle" />
-    </div>
-  );
-}
-
-function SpeakerIcon({ on }: { on: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M11 5 6 9H2v6h4l5 4V5z" />
-      {on ? (
-        <>
-          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-        </>
-      ) : (
-        <path d="m16 9 5 6m0-6-5 6" />
-      )}
-    </svg>
-  );
-}
-
 /**
  * Ganeshotsava toran: two swags of marigolds across the doors with mango
  * leaves hanging between. SVG, so it stays crisp and weighs a few hundred
- * bytes. Phones get their own drawing with fewer, larger flowers — the wide
- * one squeezed into 390px reads as a row of dots.
+ * bytes. It spans only the doorway, so one drawing serves every screen.
  */
 function Toran() {
   return (
     <div className="entrance-toran" aria-hidden="true">
-      <ToranSvg width={420} count={11} r={17} className="md:hidden" />
-      <ToranSvg width={1000} count={23} r={15} className="hidden md:block" />
+      <ToranSvg width={420} count={11} r={17} className="block" />
     </div>
   );
 }

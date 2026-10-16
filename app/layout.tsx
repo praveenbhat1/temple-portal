@@ -79,6 +79,13 @@ try {
       (replay || (!sessionStorage.getItem("svt-entrance-seen") &&
                   !matchMedia("(prefers-reduced-motion: reduce)").matches))) {
     d.classList.add("entrance-pending");
+    // The doorway photos: the overlay only mounts after hydration, so start
+    // fetching them now or the doors open as flat colour on a slow phone.
+    ["frame", "door-left", "door-right"].forEach(function (n) {
+      var l = document.createElement("link");
+      l.rel = "preload"; l.as = "image"; l.href = "/entrance/" + n + ".webp";
+      document.head.appendChild(l);
+    });
     // Safety net. TempleEntrance is normally what lifts this cover, but that
     // makes it a single point of failure over a full-screen black overlay: a
     // hydration error, a chunk that fails to load, or React re-inserting this
