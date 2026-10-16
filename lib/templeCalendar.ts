@@ -24,9 +24,9 @@ export interface CalendarEvent {
 /** Sevas offered on each kind of day — ids from lib/sevaData.ts. */
 export const SEVAS_FOR_KIND: Record<CalendarKind, string[]> = {
   // Samuhika Gana Homa is the Sankashti morning homa; vis-2 is the evening pooja.
-  sankashti: ["vis-5", "vis-2", "vis-1", "vis-3"],
-  vinayaka: ["vis-1", "vis-3", "reg-7"],
-  "ganesh-chaturthi": ["vis-1", "vis-3", "vis-8", "reg-7"],
+  sankashti: ["vis-5", "vis-2", "vis-1", "vis-3", "vis-3m", "vis-3k"],
+  vinayaka: ["vis-1", "vis-3", "vis-3m", "vis-3k", "reg-7"],
+  "ganesh-chaturthi": ["vis-1", "vis-3", "vis-3m", "vis-3k", "vis-8", "reg-7"],
   deepavali: ["reg-6", "reg-7", "reg-9"],
 };
 

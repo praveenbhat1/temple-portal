@@ -20,7 +20,9 @@ export const SEVA_DATA: SevaGroup[] = [
     items: [
       { id: "vis-1", nameEn: "Vinayaki / Sankashta Chaturthi Ganohoma Prasada", nameKn: "ವಿನಾಯಕಿ ಸಂಕಷ್ಟ ಚತುರ್ಥಿ ಗಣಹೋಮ ಪ್ರಸಾದ", price: 50 },
       { id: "vis-2", nameEn: "Sankashta Chaturthi Pooja (Evening)", nameKn: "ಸಂಕಷ್ಟ ಚತುರ್ಥಿ ಪೂಜೆ (ಸಂಜೆ)", price: 100 },
-      { id: "vis-3", nameEn: "Appe / Modaka / Kajjaya Seva", nameKn: "ಅಪ್ಪೆ / ಮೋದಕ / ಕಜ್ಜಾಯ ಸೇವೆ", price: 150, noteEn: "(Only on Sankashtahara Chaturthi and Shuddha Chaturthi / Vinayaki) (Evening)", noteKn: "(ಸಂಕಷ್ಟಹರ ಚತುರ್ಥಿ ಮತ್ತು ಶುದ್ಧ ಚತುರ್ಥಿ / ವಿನಾಯಕಿ ದಿವಸ ಮಾತ್ರ) (ಸಂಜೆ)" },
+      { id: "vis-3", nameEn: "Appe Seva", nameKn: "ಅಪ್ಪೆ ಸೇವೆ", price: 150, noteEn: "(Only on Sankashtahara Chaturthi and Shuddha Chaturthi / Vinayaki) (Evening)", noteKn: "(ಸಂಕಷ್ಟಹರ ಚತುರ್ಥಿ ಮತ್ತು ಶುದ್ಧ ಚತುರ್ಥಿ / ವಿನಾಯಕಿ ದಿವಸ ಮಾತ್ರ) (ಸಂಜೆ)" },
+      { id: "vis-3m", nameEn: "Modaka Seva", nameKn: "ಮೋದಕ ಸೇವೆ", price: 150, noteEn: "(Only on Sankashtahara Chaturthi and Shuddha Chaturthi / Vinayaki) (Evening)", noteKn: "(ಸಂಕಷ್ಟಹರ ಚತುರ್ಥಿ ಮತ್ತು ಶುದ್ಧ ಚತುರ್ಥಿ / ವಿನಾಯಕಿ ದಿವಸ ಮಾತ್ರ) (ಸಂಜೆ)" },
+      { id: "vis-3k", nameEn: "Kajjaya Seva", nameKn: "ಕಜ್ಜಾಯ ಸೇವೆ", price: 150, noteEn: "(Only on Sankashtahara Chaturthi and Shuddha Chaturthi / Vinayaki) (Evening)", noteKn: "(ಸಂಕಷ್ಟಹರ ಚತುರ್ಥಿ ಮತ್ತು ಶುದ್ಧ ಚತುರ್ಥಿ / ವಿನಾಯಕಿ ದಿವಸ ಮಾತ್ರ) (ಸಂಜೆ)" },
       { id: "vis-4", nameEn: "Moode Prasada Seva", nameKn: "ಮೂಡೆ ಪ್ರಸಾದ ಸೇವೆ", price: 150 },
       { id: "vis-5", nameEn: "Samuhika Gana Homa", nameKn: "ಸಾಮೂಹಿಕ ಗಣಹೋಮ", price: 500, noteEn: "On Sankashta Chaturthi (Morning)", noteKn: "ಸಂಕಷ್ಟ ಚತುರ್ಥಿಯಂದು (ಬೆಳಿಗ್ಗೆ)" },
       { id: "vis-6", nameEn: "Moode Naivedya Seva", nameKn: "ಮೂಡೆ ನೈವೇದ್ಯ ಸೇವೆ", price: 500, noteEn: "Only on Afternoon", noteKn: "ಮಧ್ಯಾಹ್ನ ಮಾತ್ರ" },
