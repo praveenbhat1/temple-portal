@@ -230,91 +230,109 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
   };
 
   return (
-    <div className="flex flex-col lg:grid lg:grid-cols-2 gap-10">
+    <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6 md:gap-10">
       {/* Summary Panel */}
-      <div className="bg-saffron-50/50 rounded-3xl p-6 md:p-8 border border-saffron-100 h-fit">
-        <h3 className="font-serif text-xl text-gray-900 mb-6 flex items-center gap-2">
+      <div className="bg-saffron-50/50 rounded-2xl md:rounded-3xl p-5 md:p-8 border border-saffron-100 h-fit">
+        <h3 className="font-serif text-lg md:text-xl text-gray-900 mb-4 md:mb-6 flex items-center gap-2">
           <ShoppingBag size={20} className="text-saffron-600" />
           Offering Summary
         </h3>
-        <div className="space-y-4 mb-6">
+        <div className="space-y-3 md:space-y-4 mb-4 md:mb-6">
           {selectedSevas.map(s => (
-            <div key={s.id} className="flex justify-between items-center text-sm">
-              <span className="text-gray-600">{s.name}</span>
-              <span className="font-bold text-gray-900">₹{s.price.toLocaleString("en-IN")}</span>
+            <div key={s.id} className="flex justify-between items-start gap-4 text-sm">
+              <span className="text-gray-700">{s.name}</span>
+              <span className="font-bold text-gray-900 shrink-0">₹{s.price.toLocaleString("en-IN")}</span>
             </div>
           ))}
         </div>
-        <div className="pt-6 border-t border-saffron-200 flex justify-between items-center">
-          <span className="text-gray-500 uppercase tracking-widest text-[10px] font-bold">Total Dakshina</span>
+        <div className="pt-4 md:pt-6 border-t border-saffron-200 flex justify-between items-center">
+          <span className="text-gray-600 uppercase tracking-widest text-[11px] font-bold">Total Dakshina</span>
           <span className="text-2xl font-bold text-saffron-700 font-serif">₹{totalAmount.toLocaleString("en-IN")}</span>
         </div>
       </div>
 
       {/* Inputs */}
-      <form onSubmit={handlePay} className="space-y-6">
+      <form onSubmit={handlePay} className="space-y-5 md:space-y-6">
         {/* Locked once the booking exists: its order is for these details. */}
-        <fieldset disabled={Boolean(order)} className="space-y-6 disabled:opacity-70">
-          <div className="relative">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Devotee Name</label>
+        <fieldset disabled={Boolean(order)} className="space-y-5 md:space-y-6 disabled:opacity-70">
+          <div>
+            <label htmlFor="bk-name" className={LABEL}>Devotee Name</label>
             <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/60" size={18} />
               <input
+                id="bk-name"
                 type="text" required
+                autoComplete="name"
+                autoCapitalize="words"
+                enterKeyHint="next"
                 value={form.userName}
                 onChange={(e) => {
                   setForm({ ...form, userName: e.target.value });
                   setError("");
                 }}
                 placeholder="Full name"
-                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+                className={`${INPUT} pl-12`}
               />
             </div>
           </div>
 
-          <div className="relative">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Mobile Number</label>
+          <div>
+            <label htmlFor="bk-phone" className={LABEL}>Mobile Number</label>
             <div className="relative">
               <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 border-r border-saffron-100 pr-3">
-                <Phone className="text-saffron-600/50" size={18} />
-                <span className="text-xs font-bold text-gray-400">+91</span>
+                <Phone className="text-saffron-600/60" size={18} />
+                <span className="text-sm font-bold text-gray-500">+91</span>
               </div>
               <input
+                id="bk-phone"
                 type="tel" required
+                inputMode="numeric"
+                autoComplete="tel-national"
+                enterKeyHint="next"
                 value={form.phone}
                 onChange={(e) => {
-                  setForm({ ...form, phone: e.target.value });
+                  // Phones autofill and paste "+91 98450 12345"; keep only the
+                  // ten digits rather than truncating that to "+91 98450 ".
+                  let digits = e.target.value.replace(/\D/g, "");
+                  if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(2);
+                  setForm({ ...form, phone: digits.slice(0, 10) });
                   setError("");
                 }}
-                placeholder="XXXXXXXXXX"
-                maxLength={10}
-                className="w-full bg-white border border-saffron-100 rounded-2xl pl-24 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+                placeholder="10-digit mobile number"
+                className={`${INPUT} pl-[6.5rem]`}
               />
             </div>
           </div>
 
-          <div className="relative">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Email Address (Optional)</label>
+          <div>
+            <label htmlFor="bk-email" className={LABEL}>
+              Email Address <span className="normal-case tracking-normal font-medium text-gray-400">(optional)</span>
+            </label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/60" size={18} />
               <input
+                id="bk-email"
                 type="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                enterKeyHint="next"
                 value={form.email}
                 onChange={(e) => {
                   setForm({ ...form, email: e.target.value });
                   setError("");
                 }}
                 placeholder="devotee@example.com"
-                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+                className={`${INPUT} pl-12`}
               />
             </div>
           </div>
 
-          <div className="relative">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 block px-1">Preferred Date</label>
+          <div>
+            <label htmlFor="bk-date" className={LABEL}>Preferred Date</label>
             <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/50" size={18} />
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-saffron-600/60 pointer-events-none" size={18} />
               <input
+                id="bk-date"
                 type="date" required
                 value={form.eventDate}
                 onChange={(e) => {
@@ -322,32 +340,51 @@ function BookingForm({ selectedSevas, defaultDate, onPaid, onAwaitingConfirmatio
                   setError("");
                 }}
                 min={todayISO()}
-                className="w-full bg-white border border-saffron-100 rounded-2xl pl-12 pr-4 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm"
+                className={`${INPUT} pl-12 appearance-none min-h-[3.25rem]`}
               />
             </div>
           </div>
-
         </fieldset>
 
-        {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+        {error && (
+          <p role="alert" className="text-red-600 text-sm font-semibold text-center bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            {error}
+          </p>
+        )}
 
-        <button
-          type="submit" disabled={submitting}
-          className="w-full bg-saffron-700 hover:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-sm flex items-center justify-center gap-3 group"
-        >
-          {submitting ? (
-            "Waiting for your UPI payment…"
-          ) : (
-            <>
-              <Smartphone size={18} />
-              {order ? "Try UPI payment again" : `Pay ₹${totalAmount.toLocaleString("en-IN")} with UPI`}
-            </>
-          )}
-        </button>
+        {/* Pinned to the bottom of the sheet on phones, so paying never needs
+            a scroll past the keyboard to find. */}
+        <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-white border-t border-gray-100 md:static md:mx-0 md:p-0 md:border-0">
+          <button
+            type="submit" disabled={submitting}
+            className="w-full bg-saffron-700 hover:bg-saffron-800 active:bg-saffron-800 disabled:opacity-60 text-ivory font-bold py-4 md:py-5 rounded-2xl transition-all shadow-xl shadow-saffron-700/20 text-base md:text-sm flex items-center justify-center gap-3"
+          >
+            {submitting ? (
+              "Waiting for your UPI payment…"
+            ) : (
+              <>
+                <Smartphone size={18} />
+                {order ? "Try UPI payment again" : `Pay ₹${totalAmount.toLocaleString("en-IN")} with UPI`}
+              </>
+            )}
+          </button>
+          <p className="text-[11px] text-gray-400 text-center mt-2">
+            Secure UPI payment by Razorpay · GPay, PhonePe, Paytm and more
+          </p>
+        </div>
       </form>
     </div>
   );
 }
+
+/**
+ * 16px on phones on purpose: iOS Safari zooms the whole page into any input
+ * whose text is smaller than that, and leaves it zoomed after the keyboard
+ * closes — the "everything is the wrong size" feeling on mobile.
+ */
+const INPUT =
+  "w-full bg-white border border-saffron-200/70 rounded-2xl pr-4 py-3.5 md:py-4 text-base md:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-saffron-400 focus:ring-2 focus:ring-saffron-400/20 transition-all shadow-sm";
+const LABEL = "text-[11px] uppercase tracking-widest font-bold text-gray-600 mb-2 block px-1";
 
 // ─── Modal wrapper ─────────────────────────────────────────────────────────────
 
@@ -364,28 +401,49 @@ function BookingModal({
   onPaid: (booking: Booking) => void;
   onAwaitingConfirmation: (booking: AwaitingBooking) => void;
 }) {
+  // Stop the seva list scrolling underneath the sheet, and let Escape close it.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl w-full max-w-4xl p-6 md:p-10 lg:p-12 my-auto relative">
-        <button 
-          onClick={onClose} 
-          className="absolute top-4 md:top-6 right-4 md:right-6 text-gray-400 hover:text-gray-900 transition-colors p-2 hover:bg-gray-50 rounded-full"
-        >
-          <X size={24} />
-        </button>
-        
-        <div className="mb-8 md:mb-10 text-center">
-          <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-saffron-600 block mb-3 md:mb-4">Sacred Booking</span>
-          <h2 className="text-2xl md:text-3xl font-serif text-gray-900">Complete Your Offering</h2>
-          <div className="w-12 h-0.5 bg-gold-400 mx-auto mt-4" />
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="booking-title"
+      className="fixed inset-0 z-[300] bg-foreground/40 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4 animate-fade-in"
+    >
+      {/* A full-screen sheet on phones; a centred card from tablet up. */}
+      <div className="bg-white w-full max-w-4xl h-[100dvh] md:h-auto md:max-h-[92dvh] md:rounded-[3rem] shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-4 px-5 md:px-10 pt-[max(1rem,env(safe-area-inset-top))] pb-3 md:pt-8 md:pb-6 border-b border-gray-100 md:border-0 shrink-0">
+          <div className="md:flex-1 md:text-center">
+            <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-saffron-600 block mb-1 md:mb-3">Sacred Booking</span>
+            <h2 id="booking-title" className="text-xl md:text-3xl font-serif text-gray-900">Complete Your Offering</h2>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 w-11 h-11 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X size={24} />
+          </button>
         </div>
 
-        <BookingForm
-          selectedSevas={selectedSevas}
-          defaultDate={defaultDate}
-          onPaid={onPaid}
-          onAwaitingConfirmation={onAwaitingConfirmation}
-        />
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 md:px-10 lg:px-12 pt-5 md:pt-0 md:pb-10">
+          <BookingForm
+            selectedSevas={selectedSevas}
+            defaultDate={defaultDate}
+            onPaid={onPaid}
+            onAwaitingConfirmation={onAwaitingConfirmation}
+          />
+        </div>
       </div>
     </div>
   );
@@ -612,20 +670,20 @@ function SevasContent() {
   return (
     <div className="bg-cream pt-28 md:pt-32 pb-32 md:pb-40 min-h-screen">
       {/* Header */}
-      <div className="max-w-4xl mx-auto px-6 text-center mb-16 md:mb-24 animate-fade-in">
+      <div className="max-w-4xl mx-auto px-6 text-center mb-10 md:mb-24 animate-fade-in">
         <div className="flex items-center justify-center gap-3 text-saffron-600 mb-6">
           <div className="h-px w-8 bg-saffron-600/30" />
           <span className="text-[10px] md:text-xs uppercase tracking-[0.3em] font-sans font-bold text-center">Offerings</span>
           <div className="h-px w-8 bg-saffron-600/30" />
         </div>
-        <h1 className="text-4xl md:text-5xl lg:text-7xl font-serif text-foreground mb-6 md:mb-8">Sacred Sevas</h1>
-        <p className="text-sm md:text-base text-gray-500 font-sans max-w-lg mx-auto px-4 leading-relaxed">
-          Choose one or multiple sacred offerings. Your selections will be summarized below for a unified booking experience.
+        <h1 className="text-4xl md:text-5xl lg:text-7xl font-serif text-foreground mb-4 md:mb-8">Sacred Sevas</h1>
+        <p className="text-sm md:text-base text-gray-600 font-sans max-w-lg mx-auto px-2 leading-relaxed">
+          Tap the sevas you wish to offer — choose one or several — then book and pay for them together by UPI.
         </p>
       </div>
 
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 pb-24">
+      <div className="max-w-7xl mx-auto px-3 md:px-6 pb-16 md:pb-24">
         <SevaBoard 
           selectedIds={selectedIds}
           extraSevas={extraSevas}
@@ -650,12 +708,13 @@ function SevasContent() {
         </div>
       </div>
 
-      {/* Floating Summary Panel (Cart) */}
+      {/* Floating Summary Panel (Cart) — a slim bar flush to the bottom on
+          phones, a floating pill from tablet up. */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-0 left-0 w-full z-40 p-4 md:p-8 animate-fade-in">
-          <div className="max-w-4xl mx-auto bg-foreground text-ivory rounded-[2.5rem] md:rounded-full p-4 md:p-4 px-8 md:px-10 flex flex-col md:flex-row items-center justify-between gap-4 shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.3)]">
-            <div className="flex items-center gap-6">
-              <div className="flex -space-x-3">
+        <div className="fixed bottom-0 inset-x-0 z-40 md:p-8 animate-fade-in">
+          <div className="md:max-w-4xl md:mx-auto bg-foreground text-ivory md:rounded-full px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-10 md:py-4 flex items-center justify-between gap-3 md:gap-4 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center gap-6 min-w-0">
+              <div className="hidden md:flex -space-x-3">
                 {selectedSevas.slice(0, 3).map((s, i) => (
                   <div key={i} className="w-10 h-10 rounded-full bg-saffron-600 border-2 border-foreground flex items-center justify-center text-[10px] font-bold">
                     {s.name[0]}
@@ -667,24 +726,28 @@ function SevasContent() {
                   </div>
                 )}
               </div>
-              <div className="hidden md:block">
-                <p className="text-xs text-ivory/60 uppercase tracking-widest font-bold">{selectedSevas.length} Sevas Selected</p>
-                <p className="text-lg font-serif text-gold-400">Total: ₹{totalAmount.toLocaleString("en-IN")}</p>
+              <div className="min-w-0">
+                <p className="text-[11px] md:text-xs text-ivory/70 uppercase tracking-widest font-bold whitespace-nowrap">
+                  {selectedSevas.length} {selectedSevas.length === 1 ? "Seva" : "Sevas"}
+                  <span className="hidden sm:inline"> Selected</span>
+                </p>
+                <p className="text-lg md:text-lg font-serif text-gold-400 leading-tight">₹{totalAmount.toLocaleString("en-IN")}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <button 
+            <div className="flex items-center gap-1 md:gap-4 shrink-0">
+              <button
                 onClick={() => setSelectedIds([])}
-                className="text-xs uppercase tracking-widest font-bold text-ivory/40 hover:text-white transition-colors px-4"
+                className="text-[11px] md:text-xs uppercase tracking-widest font-bold text-ivory/60 hover:text-white transition-colors px-3 py-3"
               >
                 Clear
               </button>
               <button
                 onClick={() => setBookingDefaultDate(todayISO())}
-                className="flex-1 md:flex-none bg-saffron-600 hover:bg-saffron-500 text-white px-10 py-4 rounded-full font-bold transition-all shadow-xl shadow-saffron-900/40 flex items-center justify-center gap-3 group"
+                className="bg-saffron-600 hover:bg-saffron-500 active:bg-saffron-500 text-white px-5 py-3 md:px-10 md:py-4 rounded-full font-bold transition-all shadow-xl shadow-saffron-900/40 flex items-center justify-center gap-2 md:gap-3 whitespace-nowrap group"
               >
-                Proceed to Book
+                <span className="md:hidden">Book Now</span>
+                <span className="hidden md:inline">Proceed to Book</span>
                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
