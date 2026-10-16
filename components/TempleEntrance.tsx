@@ -6,13 +6,20 @@
  *
  *   0.0s  darkness, a vignette, two oil lamps catch
  *   0.6s  the brass bells swing and ring, light seeping through the door seam
- *   1.3s  the carved doors part — a shaft of light widens across the floor
+ *   1.0s  the doors give a first push inward, then hold for a breath
+ *   1.3s  the carved doors swing open, INTO the sanctum, darkening as they
+ *         turn from the light; their edges catch the lamplight
  *   2.0s  the camera pushes in; Lord Vinayaka is revealed inside a lit arch
  *   2.6s  petals and embers drift through the light
  *   3.1s  the mantra rises
  *   4.4s  the veil lifts onto the page beneath
  *
- * The whole thing is CSS and inline SVG — no video file. That is deliberate:
+ * The doors and the camera are a GSAP timeline, because their motion has to
+ * be weighed against each other — the push, the hold, the swing and the dolly
+ * are one gesture. Everything ambient (lamps, bells, light, petals, mantra)
+ * stays in CSS keyframes in globals.css, on the same clock.
+ *
+ * There is no video file. That is deliberate:
  * an intro is the worst possible place for a multi-megabyte download, because
  * it sits between the devotee and the site. This weighs nothing and starts on
  * the first frame.
@@ -25,6 +32,7 @@
  * animation never starts with a flash of the hero.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import gsap from "gsap";
 
 export const ENTRANCE_SESSION_KEY = "svt-entrance-seen";
 
@@ -85,10 +93,15 @@ export default function TempleEntrance() {
   const phase: "playing" | "closing" | "done" = advanced ?? (shouldPlay ? "playing" : "done");
 
   const timers = useRef<number[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const timeline = useRef<gsap.core.Timeline | null>(null);
 
   const finish = useCallback(() => {
     setAdvanced((current) => {
       if (current !== null) return current; // already closing or closed
+      // Freeze the shot where it is while the veil fades, rather than letting
+      // the doors keep swinging under a half-transparent overlay.
+      timeline.current?.pause();
       timers.current.forEach(clearTimeout);
       timers.current = [];
       timers.current.push(window.setTimeout(() => setAdvanced("done"), VEIL_MS));
@@ -121,6 +134,43 @@ export default function TempleEntrance() {
     };
   }, [shouldPlay, finish]);
 
+  // The doors and the camera. Runs once, when the overlay first plays.
+  useEffect(() => {
+    if (!shouldPlay || !rootRef.current) return;
+
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: "power2.inOut" } });
+
+      // Inward = away from the viewer. With the hinge on the outer edge, a
+      // positive rotateY sends the left leaf's free edge into the screen and a
+      // negative one does the same for the right leaf.
+      tl.set(".entrance-door", { transformPerspective: 1500 })
+        // A first push: the leaves give a little, then settle as if heavy.
+        .to(".entrance-door--left", { rotateY: 4, duration: 0.35, ease: "power1.out" }, 1.0)
+        .to(".entrance-door--right", { rotateY: -4, duration: 0.35, ease: "power1.out" }, 1.0)
+        .to(".entrance-door--left", { rotateY: 2, duration: 0.25, ease: "power1.inOut" }, 1.35)
+        .to(".entrance-door--right", { rotateY: -2, duration: 0.25, ease: "power1.inOut" }, 1.35)
+        // The swing, into the sanctum.
+        .to(".entrance-door--left", { rotateY: 86, duration: 2.0, ease: "power3.inOut" }, 1.55)
+        .to(".entrance-door--right", { rotateY: -86, duration: 2.0, ease: "power3.inOut" }, 1.55)
+        .to(".entrance-door__shade", { opacity: 0.6, duration: 1.8, ease: "power2.in" }, 1.65)
+        // Light catches the parting edges, flares, then falls away as they turn.
+        .to(".entrance-door__rim", { opacity: 1, duration: 0.45, ease: "power2.out" }, 1.5)
+        .to(".entrance-door__rim", { opacity: 0, duration: 1.1, ease: "power1.in" }, 2.3)
+        // Camera: a slight pull back as the doors give, then the dolly in
+        // through the doorway once they are open.
+        .to(".entrance-camera", { scale: 1.03, duration: 1.4, ease: "sine.inOut" }, 0.2)
+        .to(".entrance-camera", { scale: 1.17, y: "-1.5%", duration: 2.8, ease: "power2.inOut" }, 1.7);
+
+      timeline.current = tl;
+    }, rootRef);
+
+    return () => {
+      timeline.current = null;
+      ctx.revert();
+    };
+  }, [shouldPlay]);
+
   // Lock scrolling and let any interaction skip ahead.
   useEffect(() => {
     if (phase !== "playing") return;
@@ -148,6 +198,7 @@ export default function TempleEntrance() {
 
   return (
     <div
+      ref={rootRef}
       className={`entrance-root ${phase === "closing" ? "is-closing" : ""}`}
       role="presentation"
       aria-hidden="true"
@@ -189,9 +240,13 @@ export default function TempleEntrance() {
         {/* ── The carved doors ── */}
         <div className="entrance-door entrance-door--left">
           <DoorCarving />
+          <span className="entrance-door__shade" />
+          <span className="entrance-door__rim" />
         </div>
         <div className="entrance-door entrance-door--right">
           <DoorCarving />
+          <span className="entrance-door__shade" />
+          <span className="entrance-door__rim" />
         </div>
 
         {/* Seam of light between the doors, before they part. */}
