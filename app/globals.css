@@ -216,9 +216,7 @@ html.entrance-active body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* Centre the murti in the doorway (which starts 30% down), not the screen. */
-  padding-top: 22vh;
-  gap: 1.6rem;
+  gap: 2.2rem;
   background:
     radial-gradient(ellipse 55% 45% at 50% 44%, rgba(251, 191, 36, 0.2), transparent 72%),
     radial-gradient(ellipse at 50% 105%, rgba(146, 64, 14, 0.4), transparent 62%),
@@ -256,10 +254,10 @@ html.entrance-active body {
 
 .entrance-seam {
   position: absolute;
-  top: 30.115%;
-  left: 50.387%;
+  top: 0;
+  left: 50%;
   width: 2px;
-  bottom: 0;
+  height: 100%;
   transform: translateX(-50%);
   background: linear-gradient(
     to bottom,
@@ -274,7 +272,7 @@ html.entrance-active body {
   /* Above the doors (z-7): this is the light escaping the gap between them,
      so painting it behind them hid it completely until they had already
      opened — at which point there is no seam left to see. */
-  z-index: 9;
+  z-index: 8;
   animation: entranceSeam 1500ms 300ms ease-out forwards;
 }
 
@@ -633,79 +631,35 @@ html.entrance-active body {
   100% { opacity: 0; transform: scale(4.6); }
 }
 
-/* ── Doors ──────────────────────────────────────────────────────────────
-   The temple's own carved doorway, from a photograph (public/entrance/).
-   The portal is the photo's box, sized to the full height of the screen and
-   centred; the carved surround (frame.webp, with the doorway cut out) sits in
-   front, and the two leaves are crops of the same photo placed exactly in the
-   hole, so closed they reassemble the picture. Percentages below are the
-   photo's own pixel coordinates (1034 × 1388): leaves from x 285 / 521 / 772,
-   y 418 down. Recut the images and these together, or the seams will show. */
-
-.entrance-portal {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  height: 100%;
-  aspect-ratio: 1034 / 1388;
-  transform: translateX(-50%);
-  pointer-events: none;
-  /* The transform makes this a stacking context; without a z-index it sits at
-     0 and the sanctum's murti (z-3), shaft and motes paint over the closed
-     doors. Above the sanctum, below the lamps and bells (z-9). */
-  z-index: 7;
-}
-
-.entrance-portal__frame {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
-  background: url("/entrance/frame.webp") center / 100% 100% no-repeat;
-}
-
-/* Edges of the photo fade into the darkness on wide screens, so the portal
-   reads as a lit doorway in a dark hall rather than a rectangle. */
-.entrance-portal__frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to right, #0d0803 0%, transparent 9%, transparent 91%, #0d0803 100%),
-    linear-gradient(to bottom, rgba(13, 8, 3, 0.55) 0%, transparent 18%);
-}
+/* ── Doors ── */
 
 .entrance-door {
   position: absolute;
-  top: 30.115%;
-  bottom: 0;
+  top: 0;
+  width: 50.6%;
+  height: 100%;
   z-index: 7;
-  /* Under-colour while the photo loads. */
-  background-color: #8a5a22;
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
   /* Flat on purpose: preserve-3d put the carving, shade and rim layers in the
      same 3D plane, and GPUs z-fight coplanar layers — a shimmer mid-swing. */
   will-change: transform;
   backface-visibility: hidden;
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35);
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 26px),
+    linear-gradient(100deg, #402913 0%, #613d1f 22%, #452b16 55%, #2b1a0c 100%);
+  box-shadow: inset 0 0 140px rgba(0, 0, 0, 0.8);
 }
 
 /* Hinged on the outer edges. The swing is a GSAP timeline in
    TempleEntrance.tsx: the leaves open INWARD, away from the devotee and into
    the sanctum, as temple doors do. */
 .entrance-door--left {
-  left: 27.563%;
-  width: 22.824%;
+  left: 0;
   transform-origin: left center;
-  background-image: url("/entrance/door-left.webp");
 }
 
 .entrance-door--right {
-  left: 50.387%;
-  width: 24.275%;
+  right: 0;
   transform-origin: right center;
-  background-image: url("/entrance/door-right.webp");
 }
 
 /* Darkens a leaf as it turns away from the light spilling out of the sanctum. */
@@ -715,6 +669,7 @@ html.entrance-active body {
   background: #000;
   opacity: 0;
   pointer-events: none;
+  z-index: 3;
 }
 
 /* Lamplight catching the free edge of each leaf as it parts. */
@@ -722,14 +677,103 @@ html.entrance-active body {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 10px;
   opacity: 0;
   pointer-events: none;
+  z-index: 4;
   background: linear-gradient(to bottom, transparent, rgba(255, 226, 150, 0.9) 30%, rgba(255, 240, 200, 1) 50%, rgba(255, 226, 150, 0.9) 70%, transparent);
   filter: blur(3px);
 }
 .entrance-door--left .entrance-door__rim { right: 0; }
 .entrance-door--right .entrance-door__rim { left: 0; }
+
+/* A touch of overshoot at the start (the doors take the weight) before they
+   swing — a straight rotate reads as a sliding panel, not a heavy door. */
+.entrance-door__face {
+  position: absolute;
+  inset: clamp(18px, 3vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 2.4vw, 30px);
+}
+
+.entrance-door__panel {
+  position: relative;
+  border: 2px solid rgba(212, 175, 55, 0.26);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 42%),
+    rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.entrance-door__panel--upper { flex: 1.35; }
+.entrance-door__panel--lower { flex: 1; }
+
+.entrance-door__motif {
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  color: rgba(212, 175, 55, 0.34);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* A carved lotus rosette on the lower panel.
+   repeating-conic-gradient, not conic-gradient: a plain conic gradient does
+   not repeat its stops, so "0 6%, transparent 6% 12.5%" drew one thin wedge
+   and left the rest of the disc empty — a sliver rather than a flower. */
+.entrance-door__lotus {
+  width: clamp(38px, 7vw, 84px);
+  height: clamp(38px, 7vw, 84px);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(212, 175, 55, 0.42) 0 15%, transparent 17%),
+    repeating-conic-gradient(
+      from 0deg,
+      rgba(212, 175, 55, 0.3) 0deg 11deg,
+      transparent 11deg 30deg
+    );
+  -webkit-mask-image: radial-gradient(circle, #000 0 49%, transparent 50%);
+  mask-image: radial-gradient(circle, #000 0 49%, transparent 50%);
+  opacity: 0.8;
+}
+
+.entrance-door__studs {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.entrance-door--left .entrance-door__studs { right: -2px; }
+.entrance-door--right .entrance-door__studs { left: -2px; }
+
+.entrance-door__studs span {
+  width: clamp(6px, 1vw, 10px);
+  height: clamp(6px, 1vw, 10px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fbeec0, #9c7420 62%, #4a3410);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.entrance-door__handle {
+  position: absolute;
+  top: 50%;
+  width: clamp(26px, 4vw, 46px);
+  height: clamp(26px, 4vw, 46px);
+  margin-top: clamp(-23px, -2vw, -13px);
+  border: clamp(4px, 0.7vw, 7px) solid;
+  border-color: #e0bf55 #9c7420 #5d420f #c99a2e;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.7);
+}
+
+.entrance-door--left .entrance-door__handle { right: clamp(16px, 3.5vw, 42px); }
+.entrance-door--right .entrance-door__handle { left: clamp(16px, 3.5vw, 42px); }
 
 /* ── Vignette ────────────────────────────────────────────────────────────
    Sits above everything and does most of the work of making this read as a
@@ -778,11 +822,10 @@ html.entrance-active body {
    they move with the scene rather than floating over it. */
 .entrance-toran {
   position: absolute;
-  /* Across the head of the doorway, just under the carved canopy. */
-  top: 27.5%;
-  left: 25%;
-  right: 23%;
-  height: 10%;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: clamp(70px, 13vw, 130px);
   z-index: 9;
   pointer-events: none;
   filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));

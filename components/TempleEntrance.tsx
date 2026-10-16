@@ -251,24 +251,22 @@ export default function TempleEntrance() {
         <Bell side="left" />
         <Bell side="right" />
 
-        {/* ── The temple's carved doorway: photo frame in front, leaves behind ── */}
-        <div className="entrance-portal">
-          <div className="entrance-door entrance-door--left">
-            <span className="entrance-door__shade" />
-            <span className="entrance-door__rim" />
-          </div>
-          <div className="entrance-door entrance-door--right">
-            <span className="entrance-door__shade" />
-            <span className="entrance-door__rim" />
-          </div>
-          <div className="entrance-portal__frame" />
-
-          {/* Seam of light between the doors, before they part. */}
-          <div className="entrance-seam" />
-
-          {festival === "ganesh" && <Toran />}
+        {/* ── The carved doors ── */}
+        <div className="entrance-door entrance-door--left">
+          <DoorCarving />
+          <span className="entrance-door__shade" />
+          <span className="entrance-door__rim" />
+        </div>
+        <div className="entrance-door entrance-door--right">
+          <DoorCarving />
+          <span className="entrance-door__shade" />
+          <span className="entrance-door__rim" />
         </div>
 
+        {/* Seam of light between the doors, before they part. */}
+        <div className="entrance-seam" />
+
+        {festival === "ganesh" && <Toran />}
         {festival === "deepavali" && <Diyas />}
 
         {/* Cinematic vignette over everything. */}
@@ -396,15 +394,37 @@ function Bell({ side }: { side: "left" | "right" }) {
   );
 }
 
+/** Carved panelling, brass studs and a ring handle for one door leaf. */
+function DoorCarving() {
+  return (
+    <div className="entrance-door__face">
+      <div className="entrance-door__panel entrance-door__panel--upper">
+        <span className="entrance-door__motif">ॐ</span>
+      </div>
+      <div className="entrance-door__panel entrance-door__panel--lower">
+        <span className="entrance-door__lotus" />
+      </div>
+      <div className="entrance-door__studs">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <span key={i} />
+        ))}
+      </div>
+      <div className="entrance-door__handle" />
+    </div>
+  );
+}
+
 /**
  * Ganeshotsava toran: two swags of marigolds across the doors with mango
  * leaves hanging between. SVG, so it stays crisp and weighs a few hundred
- * bytes. It spans only the doorway, so one drawing serves every screen.
+ * bytes. Phones get their own drawing with fewer, larger flowers — the wide
+ * one squeezed into 390px reads as a row of dots.
  */
 function Toran() {
   return (
     <div className="entrance-toran" aria-hidden="true">
-      <ToranSvg width={420} count={11} r={17} className="block" />
+      <ToranSvg width={420} count={11} r={17} className="md:hidden" />
+      <ToranSvg width={1000} count={23} r={15} className="hidden md:block" />
     </div>
   );
 }
